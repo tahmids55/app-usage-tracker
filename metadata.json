@@ -1,0 +1,8 @@
+{
+  "uuid": "app-usage-tracker@local",
+  "name": "App Usage Tracker",
+  "description": "Track active application usage time and show current app usage in the top bar.",
+  "version": 1,
+  "shell-version": ["45", "46", "47", "48"],
+  "url": "https://example.local/app-usage-tracker"
+}

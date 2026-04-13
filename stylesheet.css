@@ -1,0 +1,24 @@
+.app-usage-indicator-box {
+    spacing: 6px;
+    padding: 0 4px;
+}
+
+.app-usage-indicator-icon {
+    icon-size: 16px;
+}
+
+.app-usage-menu-icon {
+    icon-size: 16px;
+    margin-right: 8px;
+}
+
+.app-usage-menu-label {
+    font-size: 0.95em;
+}
+
+.app-usage-indicator-label {
+    font-size: 1em;        /* inherits GNOME panel font scale */
+    font-weight: 500;
+    padding: 0;
+    letter-spacing: 0.01em;
+}

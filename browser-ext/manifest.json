@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Web Usage Tracker",
+  "version": "1.0",
+  "description": "Tracks active website usage and sends it to the local tracker server.",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "idle"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:7878/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

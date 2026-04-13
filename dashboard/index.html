@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>App Usage Dashboard</title>
+	<style>
+		:root {
+			--bg-1: #f5efe3;
+			--bg-2: #e4eee6;
+			--surface: rgba(255, 255, 255, 0.78);
+			--surface-strong: rgba(255, 255, 255, 0.92);
+			--border: rgba(30, 41, 59, 0.14);
+			--text: #0f172a;
+			--muted: #475569;
+			--accent: #0b7285;
+			--accent-2: #2f855a;
+			--accent-3: #c05621;
+			--accent-4: #2b6cb0;
+			--shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
+		}
+
+		* {
+			box-sizing: border-box;
+		}
+
+		body {
+			margin: 0;
+			min-height: 100vh;
+			font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+			color: var(--text);
+			background:
+				radial-gradient(circle at 12% 18%, rgba(11, 114, 133, 0.2), transparent 34%),
+				radial-gradient(circle at 86% 22%, rgba(192, 86, 33, 0.16), transparent 28%),
+				linear-gradient(145deg, var(--bg-1), var(--bg-2));
+			padding: 24px;
+		}
+
+		.app-shell {
+			max-width: 1180px;
+			margin: 0 auto;
+			animation: rise 420ms ease;
+		}
+
+		.header {
+			display: flex;
+			align-items: flex-start;
+			justify-content: space-between;
+			gap: 16px;
+			margin-bottom: 20px;
+		}
+
+		.headline {
+			margin: 0;
+			font-size: clamp(1.6rem, 4vw, 2.5rem);
+			line-height: 1.1;
+			letter-spacing: 0.01em;
+		}
+
+		.subline {
+			margin: 8px 0 0;
+			color: var(--muted);
+			font-size: 0.98rem;
+		}
+
+		.header-tools {
+			display: flex;
+			flex-direction: column;
+			align-items: flex-end;
+			gap: 10px;
+			min-width: 230px;
+		}
+
+		.btn {
+			border: 1px solid var(--border);
+			background: var(--surface-strong);
+			color: var(--text);
+			border-radius: 999px;
+			padding: 9px 16px;
+			font-size: 0.9rem;
+			cursor: pointer;
+			transition: transform 140ms ease, box-shadow 140ms ease;
+			box-shadow: 0 3px 10px rgba(2, 6, 23, 0.08);
+		}
+
+		.btn:hover {
+			transform: translateY(-1px);
+			box-shadow: 0 7px 16px rgba(2, 6, 23, 0.12);
+		}
+
+		.last-update {
+			color: var(--muted);
+			font-size: 0.86rem;
+		}
+
+		.metrics-grid {
+			display: grid;
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+			gap: 12px;
+			margin-bottom: 14px;
+		}
+
+		.card {
+			background: var(--surface);
+			border: 1px solid var(--border);
+			backdrop-filter: blur(8px);
+			-webkit-backdrop-filter: blur(8px);
+			border-radius: 16px;
+			box-shadow: var(--shadow);
+		}
+
+		.metric {
+			padding: 14px 16px;
+			min-height: 96px;
+			animation: rise 420ms ease;
+		}
+
+		.metric-title {
+			font-size: 0.82rem;
+			text-transform: uppercase;
+			letter-spacing: 0.06em;
+			color: var(--muted);
+			margin-bottom: 8px;
+		}
+
+		.metric-value {
+			font-size: 1.6rem;
+			line-height: 1;
+			font-weight: 700;
+		}
+
+		.metric-caption {
+			margin-top: 8px;
+			font-size: 0.82rem;
+			color: var(--muted);
+		}
+
+		.layout {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 14px;
+		}
+
+		.panel {
+			padding: 16px;
+			min-height: 360px;
+			animation: rise 520ms ease;
+		}
+
+		.panel-title {
+			margin: 0;
+			font-size: 1.2rem;
+			letter-spacing: 0.01em;
+		}
+
+		.panel-subtitle {
+			margin: 6px 0 14px;
+			color: var(--muted);
+			font-size: 0.9rem;
+		}
+
+		.panel-controls {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			gap: 10px;
+			margin-bottom: 10px;
+			min-height: 38px;
+			width: 100%;
+		}
+
+		.date-nav-btn {
+			border: 1px solid var(--border);
+			background: rgba(255, 255, 255, 0.86);
+			color: var(--text);
+			border-radius: 10px;
+			padding: 9px 14px;
+			font-weight: 700;
+			font-size: 1.08rem;
+			line-height: 1;
+			cursor: pointer;
+		}
+
+		.date-nav-btn:disabled {
+			opacity: 0.45;
+			cursor: not-allowed;
+		}
+
+		.date-chip {
+			padding: 10px 16px;
+			border: 1px solid var(--border);
+			border-radius: 10px;
+			background: rgba(255, 255, 255, 0.72);
+			font-size: 0.98rem;
+			font-weight: 600;
+			min-width: 190px;
+			text-align: center;
+		}
+
+		.bar-chart {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+			align-items: end;
+			gap: 10px;
+			height: 280px;
+			padding: 10px 6px;
+			border: 1px solid rgba(15, 23, 42, 0.08);
+			border-radius: 14px;
+			background:
+				linear-gradient(0deg, rgba(148, 163, 184, 0.11) 1px, transparent 1px),
+				rgba(255, 255, 255, 0.45);
+			background-size: 100% 22%;
+		}
+
+		.bar-col {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: 6px;
+			min-width: 0;
+		}
+
+		.bar-col-val {
+			font-size: 0.72rem;
+			font-weight: 600;
+			color: #334155;
+			line-height: 1;
+		}
+
+		.bar-col-track {
+			height: 172px;
+			width: 100%;
+			border-radius: 12px;
+			background: rgba(148, 163, 184, 0.3);
+			overflow: hidden;
+			border: 1px solid rgba(15, 23, 42, 0.08);
+			display: flex;
+			align-items: flex-end;
+		}
+
+		.bar-col-fill {
+			width: 100%;
+			min-height: 6px;
+			background: linear-gradient(180deg, #4b5563, #374151);
+			border-radius: 10px 10px 0 0;
+			transition: height 220ms ease;
+		}
+
+		.bar-col.is-selected .bar-col-fill {
+			background: linear-gradient(180deg, #374151, #1f2937);
+		}
+
+		.bar-col-date {
+			font-size: 0.72rem;
+			color: var(--muted);
+			font-weight: 600;
+			font-variant-numeric: tabular-nums;
+			white-space: nowrap;
+		}
+
+		.panel-content {
+			display: grid;
+			grid-template-columns: 210px minmax(0, 1fr);
+			gap: 18px;
+			align-items: start;
+		}
+
+		.donut-wrap {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 210px;
+		}
+
+		.donut {
+			width: 190px;
+			height: 190px;
+			border-radius: 50%;
+			position: relative;
+			background: conic-gradient(var(--accent) 0deg, #dbe3e8 0deg 360deg);
+			box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.1);
+		}
+
+		.donut::after {
+			content: "";
+			position: absolute;
+			inset: 26px;
+			border-radius: 50%;
+			background: var(--surface-strong);
+			box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+		}
+
+		.donut-center {
+			position: absolute;
+			inset: 0;
+			display: grid;
+			place-items: center;
+			text-align: center;
+			z-index: 1;
+			padding: 0 30px;
+		}
+
+		.donut-value {
+			font-size: 1.2rem;
+			font-weight: 700;
+			line-height: 1.1;
+		}
+
+		.donut-label {
+			margin-top: 5px;
+			font-size: 0.74rem;
+			color: var(--muted);
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+		}
+
+		.legend {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			margin-top: 10px;
+		}
+
+		.legend-item {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 12px;
+			border: 1px solid rgba(15, 23, 42, 0.08);
+			border-radius: 12px;
+			padding: 10px 12px;
+			background: rgba(255, 255, 255, 0.56);
+		}
+
+		.legend-item-app {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 8px;
+		}
+
+		.legend-head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 10px;
+		}
+
+		.legend-head-clickable {
+			cursor: pointer;
+			padding: 2px 0;
+			border-radius: 8px;
+		}
+
+		.legend-head-clickable:hover {
+			background: rgba(15, 23, 42, 0.05);
+		}
+
+		.legend-left {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			min-width: 0;
+		}
+
+		.swatch {
+			width: 11px;
+			height: 11px;
+			border-radius: 50%;
+			flex: 0 0 auto;
+		}
+
+		.legend-name {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			font-size: 0.92rem;
+		}
+
+		.legend-val {
+			font-weight: 600;
+			font-size: 0.88rem;
+			color: #1e293b;
+		}
+
+		.legend-children {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+			padding-left: 22px;
+		}
+
+		.legend-child-row {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 10px;
+			font-size: 0.8rem;
+			color: var(--muted);
+		}
+
+		.legend-child-name {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.legend-child-val {
+			font-variant-numeric: tabular-nums;
+			font-weight: 600;
+		}
+
+		.empty {
+			color: var(--muted);
+			border: 1px dashed rgba(71, 85, 105, 0.28);
+			border-radius: 12px;
+			padding: 16px;
+			text-align: center;
+			margin-top: 10px;
+			background: rgba(255, 255, 255, 0.46);
+		}
+
+		.status {
+			margin-top: 12px;
+			color: #9a3412;
+			font-size: 0.88rem;
+			display: none;
+		}
+
+		.status.show {
+			display: block;
+		}
+
+		@keyframes rise {
+			from {
+				opacity: 0;
+				transform: translateY(8px);
+			}
+			to {
+				opacity: 1;
+				transform: translateY(0);
+			}
+		}
+
+		@media (max-width: 1100px) {
+			.metrics-grid {
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+			}
+
+			.layout {
+				grid-template-columns: 1fr;
+			}
+		}
+
+		@media (max-width: 700px) {
+			body {
+				padding: 14px;
+			}
+
+			.header {
+				flex-direction: column;
+			}
+
+			.header-tools {
+				width: 100%;
+				align-items: flex-start;
+			}
+
+			.metrics-grid {
+				grid-template-columns: 1fr;
+			}
+
+			.panel-content {
+				grid-template-columns: 1fr;
+			}
+
+			.bar-chart {
+				height: 240px;
+				grid-template-columns: repeat(auto-fit, minmax(34px, 1fr));
+				gap: 8px;
+			}
+
+			.bar-col-track {
+				height: 140px;
+			}
+
+			.donut-wrap {
+				min-height: 180px;
+			}
+		}
+	</style>
+</head>
+<body>
+	<main class="app-shell">
+		<header class="header">
+			<div>
+				<h1 class="headline">Usage Intelligence Dashboard</h1>
+				<p class="subline">Live activity from your desktop apps and browser domains.</p>
+			</div>
+			<div class="header-tools">
+				<button id="refreshBtn" class="btn" type="button">Refresh Now</button>
+				<div id="lastUpdate" class="last-update">Waiting for first sync...</div>
+			</div>
+		</header>
+
+		<section class="metrics-grid" aria-label="Key metrics">
+			<article class="card metric">
+				<div class="metric-title">Tracked Today</div>
+				<div id="metricTotal" class="metric-value">0m</div>
+				<div class="metric-caption">Total live time across all apps</div>
+			</article>
+			<article class="card metric">
+				<div class="metric-title">Top App</div>
+				<div id="metricTopApp" class="metric-value">-</div>
+				<div id="metricTopAppTime" class="metric-caption">0m</div>
+			</article>
+			<article class="card metric">
+				<div class="metric-title">Web Time Share</div>
+				<div id="metricWebShare" class="metric-value">0%</div>
+				<div class="metric-caption">Portion of tracked time on domains</div>
+			</article>
+			<article class="card metric">
+				<div class="metric-title">Tracked Entities</div>
+				<div id="metricEntities" class="metric-value">0</div>
+				<div class="metric-caption">Apps + domains with activity</div>
+			</article>
+		</section>
+
+		<section class="layout">
+			<article class="card panel" aria-labelledby="todayTitle">
+				<h2 id="todayTitle" class="panel-title">Selected Day Detail</h2>
+				<p class="panel-subtitle" id="selectedSubtitle">Navigate day by day to inspect app distribution.</p>
+				<div class="panel-controls">
+					<button id="prevDateBtn" class="date-nav-btn" type="button" aria-label="Previous date">&lt;</button>
+					<div id="selectedDateLabel" class="date-chip">--/--/----</div>
+					<button id="nextDateBtn" class="date-nav-btn" type="button" aria-label="Next date">&gt;</button>
+				</div>
+				<div class="panel-content">
+					<div class="donut-wrap" id="selectedDonutWrap"></div>
+					<div>
+						<div id="selectedLegend" class="legend"></div>
+						<div id="selectedEmpty" class="empty" hidden>No app usage has been tracked for this date.</div>
+					</div>
+				</div>
+			</article>
+
+			<article class="card panel" aria-labelledby="historyTitle">
+				<h2 id="historyTitle" class="panel-title">Daily Trend</h2>
+				<p class="panel-subtitle" id="trendSubtitle">Rectangular day-based bars across your recent tracked dates.</p>
+				<div class="panel-content" style="grid-template-columns: 1fr;">
+					<div id="dayBars" class="bar-chart"></div>
+					<div id="trendEmpty" class="empty" hidden>Not enough daily data yet to draw a trend.</div>
+				</div>
+			</article>
+		</section>
+
+		<p id="status" class="status" role="status"></p>
+	</main>
+
+	<script src="/dashboard/app.js"></script>
+</body>
+</html>

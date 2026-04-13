@@ -1,0 +1,45 @@
+# User-requested ignores
+icon/sites/
+READ.md
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.csr
+*.jks
+*.keystore
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# API/service account secrets
+secrets.json
+secret.json
+credentials.json
+service-account*.json
+firebase-adminsdk*.json
+
+# Local databases and sensitive artifacts
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs and runtime dumps
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS/editor sensitive clutter
+.DS_Store
+Thumbs.db
+.vscode/settings.json
