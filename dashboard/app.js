@@ -502,7 +502,7 @@ async function loadDashboardData() {
 
 	let selectedDate = state.selectedDate;
 	if (!selectedDate || !dateList.includes(selectedDate))
-		selectedDate = dateList.find(d => d !== todayDate) || todayDate;
+		selectedDate = todayDate;
 
 	const selectedRaw = selectedDate === todayDate
 		? todayRaw

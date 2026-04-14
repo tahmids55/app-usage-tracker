@@ -45,6 +45,7 @@ static std::atomic<bool> g_running{true};
 static std::string g_save_path;
 static std::string g_daily_path;
 static std::string g_dashboard_dir;
+static std::string g_lastScheduledResetDate;
 
 static void sendResponse(int fd,
                          const std::string &status,
@@ -52,6 +53,7 @@ static void sendResponse(int fd,
                          const std::string &body,
                          bool cors);
 static void send404(int fd);
+static void saveToDisk();
 
 static std::string jsonEsc(const std::string &s) {
     std::string o;
@@ -577,6 +579,57 @@ static void hydrateLifetimeFromDailyIfNeeded() {
     }
 }
 
+static void rebuildLifetimeFromDailyLocked() {
+    g_store.apps.clear();
+    for (const auto &[date, dayApps] : g_store.dailyApps) {
+        (void)date;
+        for (const auto &[appName, entry] : dayApps) {
+            auto &dest = g_store.apps[appName];
+            dest.total += entry.total;
+            for (const auto &[domain, sec] : entry.children)
+                dest.children[domain] += sec;
+        }
+    }
+}
+
+static void resetTodayDataNow() {
+    const std::string today = currentLocalDate();
+
+    {
+        std::lock_guard<std::mutex> lk(g_store.mtx);
+        g_store.dailyApps.erase(today);
+        g_store.apps.clear();
+        g_store.currentWebDomain.clear();
+        g_store.currentWebApp.clear();
+    }
+
+    saveToDisk();
+}
+
+static void maybeResetLiveStatsAt2359() {
+    const std::time_t now = std::time(nullptr);
+    std::tm tmNow{};
+    localtime_r(&now, &tmNow);
+
+    if (tmNow.tm_hour != 23 || tmNow.tm_min != 59)
+        return;
+
+    const std::string dateKey = currentLocalDate();
+    if (g_lastScheduledResetDate == dateKey)
+        return;
+
+    {
+        std::lock_guard<std::mutex> lk(g_store.mtx);
+        g_store.apps.clear();
+        g_store.currentWebDomain.clear();
+        g_store.currentWebApp.clear();
+    }
+
+    g_lastScheduledResetDate = dateKey;
+    saveToDisk();
+    std::cout << "[server] Scheduled 23:59 reset completed for " << dateKey << "\n";
+}
+
 static void saveToDisk() {
     std::ofstream f(g_save_path);
     if (f)
@@ -765,6 +818,9 @@ static void handleClient(int fd) {
     if (path == "/track" && method == "POST") {
         handleTrackPayload(body);
         sendResponse(fd, "200 OK", "application/json", "{\"ok\":true}", true);
+    } else if (path == "/reset-today" && method == "POST") {
+        resetTodayDataNow();
+        sendResponse(fd, "200 OK", "application/json", "{\"ok\":true,\"reset\":\"today\"}", true);
     } else if (path == "/active-web" && method == "POST") {
         handleActiveWebPayload(body);
         sendResponse(fd, "200 OK", "application/json", "{\"ok\":true}", true);
@@ -851,6 +907,7 @@ int main() {
     std::cout << "[server] Listening on http://127.0.0.1:" << PORT << "\n";
     std::cout << "[server] Stats       : GET http://127.0.0.1:" << PORT << "/stats\n";
     std::cout << "[server] Daily       : GET http://127.0.0.1:" << PORT << "/daily?date=today\n";
+    std::cout << "[server] Reset Today : POST http://127.0.0.1:" << PORT << "/reset-today\n";
     std::cout << "[server] Daily Dates : GET http://127.0.0.1:" << PORT << "/daily-dates\n";
     std::cout << "[server] History     : GET http://127.0.0.1:" << PORT << "/history\n";
     std::cout << "[server] Dashboard   : GET http://127.0.0.1:" << PORT << "/dashboard\n";
@@ -859,6 +916,8 @@ int main() {
     std::cout << "[server] Daily Data  : " << g_daily_path << "\n";
 
     while (g_running) {
+        maybeResetLiveStatsAt2359();
+
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(server_fd, &fds);

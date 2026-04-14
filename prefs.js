@@ -9,6 +9,7 @@ class TrackerSettings {
         this._defaults = {
             indicatorPosition: 'left',
             childLimit: 5,
+            topAppCount: 8,
             autoStartServer: true,
         };
         this._configDir = GLib.build_filenamev([GLib.get_user_config_dir(), 'app-usage-tracker']);
@@ -49,6 +50,8 @@ class TrackerSettings {
             data.indicatorPosition = this._defaults.indicatorPosition;
         const childLimit = Number(data.childLimit);
         data.childLimit = Number.isFinite(childLimit) ? Math.max(1, Math.min(20, Math.floor(childLimit))) : this._defaults.childLimit;
+        const topAppCount = Number(data.topAppCount);
+        data.topAppCount = Number.isFinite(topAppCount) ? Math.max(1, Math.min(30, Math.floor(topAppCount))) : this._defaults.topAppCount;
         data.autoStartServer = Boolean(data.autoStartServer);
         return data;
     }
@@ -92,7 +95,7 @@ export default class AppUsageTrackerPrefs extends ExtensionPreferences {
         behaviorGroup.add(positionRow);
 
         const childLimitRow = new Adw.ActionRow({
-            title: 'Child Items Per App',
+            title: 'Website Children Per App',
             subtitle: 'Maximum number of website children shown for each app.',
         });
 
@@ -117,6 +120,33 @@ export default class AppUsageTrackerPrefs extends ExtensionPreferences {
         childLimitRow.add_suffix(childLimitSpin);
         childLimitRow.set_activatable_widget(childLimitSpin);
         behaviorGroup.add(childLimitRow);
+
+        const topAppCountRow = new Adw.ActionRow({
+            title: 'Top Apps In Menu',
+            subtitle: 'How many top apps are shown in the GNOME extension list.',
+        });
+
+        const topAppAdjustment = new Gtk.Adjustment({
+            lower: 1,
+            upper: 30,
+            step_increment: 1,
+            page_increment: 1,
+            value: current.topAppCount,
+        });
+
+        const topAppSpin = new Gtk.SpinButton({
+            adjustment: topAppAdjustment,
+            climb_rate: 1,
+            digits: 0,
+            valign: Gtk.Align.CENTER,
+        });
+        topAppSpin.connect('value-changed', spin => {
+            settings.update({topAppCount: spin.get_value_as_int()});
+        });
+
+        topAppCountRow.add_suffix(topAppSpin);
+        topAppCountRow.set_activatable_widget(topAppSpin);
+        behaviorGroup.add(topAppCountRow);
 
         const autoStartRow = new Adw.ActionRow({
             title: 'Auto-start Local Server',

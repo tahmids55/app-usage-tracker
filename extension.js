@@ -16,6 +16,7 @@ class TrackerSettings {
         this._defaults = {
             indicatorPosition: 'left',
             childLimit: 5,
+            topAppCount: 8,
             autoStartServer: true,
         };
         this._configDir = GLib.build_filenamev([GLib.get_user_config_dir(), 'app-usage-tracker']);
@@ -62,6 +63,13 @@ class TrackerSettings {
         if (!Number.isFinite(value))
             return this._defaults.childLimit;
         return Math.max(1, Math.min(20, Math.floor(value)));
+    }
+
+    getTopAppCount() {
+        const value = Number(this._read().topAppCount);
+        if (!Number.isFinite(value))
+            return this._defaults.topAppCount;
+        return Math.max(1, Math.min(30, Math.floor(value)));
     }
 
     getAutoStartServer() {
@@ -722,7 +730,8 @@ class AppUsageTracker {
     _syncServerData() {
         this._getJson(this._statsUrl, statsData => {
             const normalized = this._normalizeStats(statsData);
-            this._ingestServerSnapshot(normalized);
+            this._serverApps = normalized.apps;
+            this._webTotals = normalized.webTotals;
 
             if (!this._currentDomain) {
                 const fromTotals = this._updateCurrentDomainFromTotals(this._webTotals);
@@ -851,7 +860,7 @@ class AppUsageTracker {
         return appName.toLowerCase() === this._lastApp.toLowerCase();
     }
 
-    getUsageTree(limitChildren) {
+    getUsageTree(limitChildren, limitApps = 8) {
         const rows = [];
 
         for (const [appName, entry] of this._serverApps.entries()) {
@@ -873,7 +882,7 @@ class AppUsageTracker {
         }
 
         rows.sort((a, b) => b.total - a.total);
-        return rows;
+        return rows.slice(0, Math.max(1, Math.floor(limitApps || 1)));
     }
 
     getTotalUsageSeconds() {
@@ -1058,7 +1067,10 @@ const UsageIndicator = GObject.registerClass(class UsageIndicator extends PanelM
     _renderMenu() {
         this.menu.removeAll();
 
-        const rows = this._tracker.getUsageTree(this._settings.getChildLimit());
+        const rows = this._tracker.getUsageTree(
+            this._settings.getChildLimit(),
+            this._settings.getTopAppCount()
+        );
         const total = this._tracker.getTotalUsageSeconds();
 
         this.menu.addMenuItem(createInfoItem(`Total Usage: ${formatTimeDetailed(total)}`));
