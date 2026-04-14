@@ -79,6 +79,10 @@ class AppUsageTracker {
         this._usageMap = new Map();
         this._serverApps = new Map();
         this._webTotals = new Map();
+        this._rawServerApps = new Map();
+        this._appCarry = new Map();
+        this._rawServerChildren = new Map();
+        this._childCarry = new Map();
 
         this._lastApp = null;
         this._lastAppGicon = null;
@@ -208,6 +212,10 @@ class AppUsageTracker {
         this._appIconCache.clear();
         this._serverApps.clear();
         this._webTotals.clear();
+        this._rawServerApps.clear();
+        this._appCarry.clear();
+        this._rawServerChildren.clear();
+        this._childCarry.clear();
     }
 
     _emitUpdate() {
@@ -583,6 +591,70 @@ class AppUsageTracker {
         return {apps, webTotals};
     }
 
+    _snapshotChildren(appName, rawChildren, prevEntry) {
+        const merged = new Map();
+        if (prevEntry && prevEntry.children) {
+            for (const [domain, sec] of prevEntry.children.entries())
+                merged.set(domain, sec);
+        }
+
+        for (const [domain, rawSec] of rawChildren.entries()) {
+            const childKey = `${String(appName).toLowerCase()}@@${String(domain).toLowerCase()}`;
+            const prevRaw = this._rawServerChildren.get(childKey) || 0;
+            let carry = this._childCarry.get(childKey) || 0;
+
+            if (rawSec < prevRaw)
+                carry += prevRaw;
+
+            const effective = carry + rawSec;
+            merged.set(domain, Math.max(merged.get(domain) || 0, effective));
+            this._rawServerChildren.set(childKey, rawSec);
+            this._childCarry.set(childKey, carry);
+        }
+
+        return merged;
+    }
+
+    _ingestServerSnapshot(normalized) {
+        if (!normalized || !(normalized.apps instanceof Map))
+            return;
+
+        if (normalized.apps.size === 0)
+            return;
+
+        for (const [appName, entry] of normalized.apps.entries()) {
+            const prevEntry = this._serverApps.get(appName) || {total: 0, children: new Map()};
+            const prevRaw = this._rawServerApps.get(appName) || 0;
+            const rawTotal = Number(entry.total) || 0;
+            let carry = this._appCarry.get(appName) || 0;
+
+            if (rawTotal < prevRaw)
+                carry += prevRaw;
+
+            this._rawServerApps.set(appName, rawTotal);
+            this._appCarry.set(appName, carry);
+
+            const mergedChildren = this._snapshotChildren(appName, entry.children, prevEntry);
+            let childSum = 0;
+            for (const sec of mergedChildren.values())
+                childSum += sec;
+
+            const effectiveTotal = Math.max(prevEntry.total, carry + rawTotal, childSum);
+            this._serverApps.set(appName, {
+                total: effectiveTotal,
+                children: mergedChildren,
+            });
+        }
+
+        const webTotals = new Map();
+        for (const [, entry] of this._serverApps.entries()) {
+            for (const [domain, sec] of entry.children.entries())
+                webTotals.set(domain, (webTotals.get(domain) || 0) + sec);
+        }
+
+        this._webTotals = webTotals;
+    }
+
     _extractCurrentDomainFromHistory(historyData) {
         if (!historyData)
             return null;
@@ -650,11 +722,10 @@ class AppUsageTracker {
     _syncServerData() {
         this._getJson(this._statsUrl, statsData => {
             const normalized = this._normalizeStats(statsData);
-            this._serverApps = normalized.apps;
-            this._webTotals = normalized.webTotals;
+            this._ingestServerSnapshot(normalized);
 
             if (!this._currentDomain) {
-                const fromTotals = this._updateCurrentDomainFromTotals(normalized.webTotals);
+                const fromTotals = this._updateCurrentDomainFromTotals(this._webTotals);
                 if (fromTotals && this._currentDomain !== fromTotals)
                     this._currentDomain = fromTotals;
             }
@@ -805,6 +876,27 @@ class AppUsageTracker {
         return rows;
     }
 
+    getTotalUsageSeconds() {
+        if (this._serverApps.size > 0) {
+            let total = 0;
+            for (const [, entry] of this._serverApps.entries())
+                total += Math.max(0, Math.floor(entry.total || 0));
+            return total;
+        }
+
+        let total = 0;
+        for (const sec of this._usageMap.values())
+            total += Math.max(0, Math.floor(sec || 0));
+
+        if (this._lastApp) {
+            const now = Math.floor(GLib.get_monotonic_time() / 1000000);
+            if (this._lastTime > 0)
+                total += Math.max(0, now - this._lastTime);
+        }
+
+        return total;
+    }
+
     _startServerProcess() {
         if (!GLib.file_test(this._serverBinaryPath, GLib.FileTest.EXISTS | GLib.FileTest.IS_EXECUTABLE)) {
             Main.notify('App Usage Tracker', 'Server binary not found or not executable.');
@@ -875,6 +967,15 @@ function formatTime(totalSeconds) {
 
     if (h > 0)
         return `${h}h`;
+    return `${m}m`;
+}
+
+function formatTimeDetailed(totalSeconds) {
+    const seconds = Math.max(0, Math.floor(totalSeconds));
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0)
+        return `${h}h ${m}m`;
     return `${m}m`;
 }
 
@@ -958,6 +1059,10 @@ const UsageIndicator = GObject.registerClass(class UsageIndicator extends PanelM
         this.menu.removeAll();
 
         const rows = this._tracker.getUsageTree(this._settings.getChildLimit());
+        const total = this._tracker.getTotalUsageSeconds();
+
+        this.menu.addMenuItem(createInfoItem(`Total Usage: ${formatTimeDetailed(total)}`));
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         if (rows.length === 0) {
             this.menu.addMenuItem(createInfoItem('No activity yet'));
