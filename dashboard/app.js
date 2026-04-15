@@ -24,9 +24,12 @@ function formatDuration(totalSeconds) {
 	const seconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
 	const h = Math.floor(seconds / 3600);
 	const m = Math.floor((seconds % 3600) / 60);
+	const s = seconds % 60;
 	if (h > 0)
-		return `${h}h ${m}m`;
-	return `${m}m`;
+		return `${h}h ${m}m ${s}s`;
+	if (m > 0)
+		return `${m}m ${s}s`;
+	return `${s}s`;
 }
 
 function shortLabel(name, max = 22) {
@@ -136,7 +139,7 @@ function makeDonutMarkup(items, label, totalSeconds) {
 		return `
 			<div class="donut" style="background: conic-gradient(#dbe3e8 0 360deg)">
 				<div class="donut-center">
-					<div class="donut-value">0m</div>
+					<div class="donut-value">0s</div>
 					<div class="donut-label">${label}</div>
 				</div>
 			</div>
@@ -374,7 +377,7 @@ function renderTrendBars(trendRows) {
 		empty.hidden = true;
 
 	if (subtitle)
-		subtitle.textContent = `Showing ${trendRows.length} day${trendRows.length > 1 ? 's' : ''} of tracked activity (scale: 15h max).`;
+		subtitle.textContent = `Showing ${trendRows.length} day${trendRows.length > 1 ? 's' : ''} of tracked activity (scale: ${TREND_SCALE_MAX_HOURS}h max).`;
 
 	for (const row of trendRows) {
 		const line = document.createElement('div');
@@ -418,7 +421,7 @@ function renderMetrics(todayStats, selectedStats, selectedDate, todayDate) {
 
 	q('metricTotal').textContent = formatDuration(total);
 	q('metricTopApp').textContent = topApp ? shortLabel(topApp.name, 16) : '-';
-	q('metricTopAppTime').textContent = topApp ? formatDuration(topApp.total) : '0m';
+	q('metricTopAppTime').textContent = topApp ? formatDuration(topApp.total) : '0s';
 	q('metricWebShare').textContent = `${webShare}%`;
 	q('metricEntities').textContent = String(entities);
 

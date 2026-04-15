@@ -95,9 +95,9 @@
 
 		.metrics-grid {
 			display: grid;
-			grid-template-columns: repeat(4, minmax(0, 1fr));
-			gap: 12px;
-			margin-bottom: 14px;
+			grid-template-columns: repeat(12, minmax(0, 1fr));
+			gap: 14px;
+			margin-bottom: 16px;
 		}
 
 		.card {
@@ -110,9 +110,24 @@
 		}
 
 		.metric {
-			padding: 14px 16px;
-			min-height: 96px;
+			grid-column: span 2;
+			padding: 16px 18px;
+			min-height: 112px;
+			position: relative;
+			overflow: hidden;
 			animation: rise 420ms ease;
+		}
+
+		.metric::before {
+			content: "";
+			position: absolute;
+			inset: 0 0 auto 0;
+			height: 3px;
+			background: linear-gradient(90deg, rgba(11, 114, 133, 0.9), rgba(43, 108, 176, 0.8));
+		}
+
+		.metric--primary {
+			grid-column: span 6;
 		}
 
 		.metric-title {
@@ -124,9 +139,10 @@
 		}
 
 		.metric-value {
-			font-size: 1.6rem;
+			font-size: clamp(1.3rem, 2.3vw, 1.95rem);
 			line-height: 1;
 			font-weight: 700;
+			font-variant-numeric: tabular-nums;
 		}
 
 		.metric-caption {
@@ -137,7 +153,7 @@
 
 		.layout {
 			display: grid;
-			grid-template-columns: 1fr 1fr;
+			grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
 			gap: 14px;
 		}
 
@@ -443,7 +459,15 @@
 
 		@media (max-width: 1100px) {
 			.metrics-grid {
-				grid-template-columns: repeat(2, minmax(0, 1fr));
+				grid-template-columns: repeat(6, minmax(0, 1fr));
+			}
+
+			.metric {
+				grid-column: span 3;
+			}
+
+			.metric--primary {
+				grid-column: span 6;
 			}
 
 			.layout {
@@ -466,7 +490,12 @@
 			}
 
 			.metrics-grid {
-				grid-template-columns: 1fr;
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+			}
+
+			.metric,
+			.metric--primary {
+				grid-column: span 2;
 			}
 
 			.panel-content {
@@ -503,15 +532,15 @@
 		</header>
 
 		<section class="metrics-grid" aria-label="Key metrics">
-			<article class="card metric">
+			<article class="card metric metric--primary">
 				<div class="metric-title">Tracked Today</div>
-				<div id="metricTotal" class="metric-value">0m</div>
+				<div id="metricTotal" class="metric-value">0s</div>
 				<div class="metric-caption">Total live time across all apps</div>
 			</article>
 			<article class="card metric">
 				<div class="metric-title">Top App</div>
 				<div id="metricTopApp" class="metric-value">-</div>
-				<div id="metricTopAppTime" class="metric-caption">0m</div>
+				<div id="metricTopAppTime" class="metric-caption">0s</div>
 			</article>
 			<article class="card metric">
 				<div class="metric-title">Web Time Share</div>

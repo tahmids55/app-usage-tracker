@@ -829,28 +829,58 @@ class AppUsageTracker {
         return this._lastApp;
     }
 
+    _liveElapsedSeconds() {
+        if (!this._lastApp || this._lastTime <= 0)
+            return 0;
+
+        const now = Math.floor(GLib.get_monotonic_time() / 1000000);
+        return Math.max(0, now - this._lastTime);
+    }
+
+    _liveOverlaySecondsForCurrentDisplay() {
+        const live = this._liveElapsedSeconds();
+        if (live <= 0)
+            return 0;
+
+        // Browser domain time is already streamed every second by browser-ext.
+        // Adding local overlay here causes +2s jumps.
+        if (this._isBrowserApp(this._lastApp) && this._currentDomain)
+            return 0;
+
+        return live;
+    }
+
     getCurrentDisplaySeconds() {
         if (this._isBrowserApp(this._lastApp) && this._currentDomain) {
+            const liveElapsed = this._liveOverlaySecondsForCurrentDisplay();
+
             for (const [appName, entry] of this._serverApps.entries()) {
                 if (!this._isBrowserApp(appName))
                     continue;
                 const sec = entry.children.get(this._currentDomain) || 0;
                 if (sec > 0)
-                    return sec;
+                    return sec + liveElapsed;
             }
-            return this._webTotals.get(this._currentDomain) || 0;
+
+            const webTotal = this._webTotals.get(this._currentDomain) || 0;
+            if (webTotal > 0)
+                return webTotal + liveElapsed;
+
+            return liveElapsed;
         }
 
         if (!this._lastApp)
             return 0;
 
-        if (this._serverApps.has(this._lastApp))
-            return this._serverApps.get(this._lastApp).total;
+        const liveElapsed = this._liveOverlaySecondsForCurrentDisplay();
+
+        if (this._serverApps.has(this._lastApp)) {
+            const base = this._serverApps.get(this._lastApp).total;
+            return Math.max(0, base + liveElapsed);
+        }
 
         let local = this._usageMap.get(this._lastApp) || 0;
-        const now = Math.floor(GLib.get_monotonic_time() / 1000000);
-        if (this._lastTime > 0)
-            local += (now - this._lastTime);
+        local += liveElapsed;
         return local;
     }
 
@@ -876,6 +906,38 @@ class AppUsageTracker {
             });
         }
 
+        const liveElapsed = this._liveOverlaySecondsForCurrentDisplay();
+        if (liveElapsed > 0 && this._lastApp) {
+            const idx = rows.findIndex(row => row.name.toLowerCase() === String(this._lastApp).toLowerCase());
+
+            if (idx >= 0) {
+                rows[idx].total += liveElapsed;
+
+                if (this._isBrowserApp(this._lastApp) && this._currentDomain) {
+                    const child = rows[idx].children.find(entry => entry.name === this._currentDomain);
+                    if (child) {
+                        child.seconds += liveElapsed;
+                    } else {
+                        rows[idx].children.push({name: this._currentDomain, seconds: liveElapsed});
+                    }
+
+                    rows[idx].children.sort((a, b) => b.seconds - a.seconds);
+                    if (rows[idx].children.length > limitChildren)
+                        rows[idx].children = rows[idx].children.slice(0, limitChildren);
+                }
+            } else {
+                const children = this._isBrowserApp(this._lastApp) && this._currentDomain
+                    ? [{name: this._currentDomain, seconds: liveElapsed}]
+                    : [];
+
+                rows.push({
+                    name: this._lastApp,
+                    total: liveElapsed,
+                    children,
+                });
+            }
+        }
+
         if (rows.length === 0) {
             for (const [appName, sec] of this._usageMap.entries())
                 rows.push({name: appName, total: sec, children: []});
@@ -890,6 +952,8 @@ class AppUsageTracker {
             let total = 0;
             for (const [, entry] of this._serverApps.entries())
                 total += Math.max(0, Math.floor(entry.total || 0));
+
+            total += this._liveOverlaySecondsForCurrentDisplay();
             return total;
         }
 
@@ -973,19 +1037,23 @@ function formatTime(totalSeconds) {
     const seconds = Math.max(0, Math.floor(totalSeconds));
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
 
     if (h > 0)
-        return `${h}h`;
-    return `${m}m`;
+        return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function formatTimeDetailed(totalSeconds) {
     const seconds = Math.max(0, Math.floor(totalSeconds));
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
     if (h > 0)
-        return `${h}h ${m}m`;
-    return `${m}m`;
+        return `${h}h ${m}m ${s}s`;
+    if (m > 0)
+        return `${m}m ${s}s`;
+    return `${s}s`;
 }
 
 function createInfoItem(text) {
