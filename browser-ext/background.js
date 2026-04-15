@@ -79,7 +79,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 chrome.windows.onFocusChanged.addListener(updateCurrentTab);
 
 // Watch for system idle state (e.g. away from keyboard)
-chrome.idle.setDetectionInterval(60);
+chrome.idle.setDetectionInterval(600);
 chrome.idle.onStateChanged.addListener((newState) => {
   isIdle = (newState === "idle" || newState === "locked");
   updateCurrentTab();
