@@ -37,7 +37,6 @@ struct Store {
     std::map<std::string, std::map<std::string, AppEntry>> dailyApps;
     std::string currentWebDomain;
     std::string currentApp;  // Active app name (any app, not just browsers)
-    bool isIdle = false;
     std::mutex mtx;
 };
 
@@ -745,35 +744,10 @@ static void handleStatePayload(const std::string &body) {
     if (body.find("\"app\"") != std::string::npos) {
         std::string app = jStr(body, "app");
         g_store.currentApp = app;
-        // When switching away from a browser to a non-browser app,
-        // clear the web domain so the tick loop doesn't count stale domains.
-        if (!app.empty()) {
-            // Domain will be set separately via /active-web from the browser extension.
-            // Only clear if we're switching to a non-empty app that isn't the same
-            // browser that set the domain.
-            // We can't know here if the new app is a browser, so we always clear.
-            // The browser extension will re-post the domain momentarily if needed.
-            g_store.currentWebDomain.clear();
-        }
     }
 
     if (body.find("\"web\"") != std::string::npos) {
         g_store.currentWebDomain = jStr(body, "web");
-    }
-
-    // Parse idle state
-    auto idlePos = body.find("\"idle\"");
-    if (idlePos != std::string::npos) {
-        auto valPos = body.find(":", idlePos);
-        if (valPos != std::string::npos) {
-            auto tPos = body.find("true", valPos);
-            auto fPos = body.find("false", valPos);
-            if (tPos != std::string::npos && (fPos == std::string::npos || tPos < fPos)) {
-                g_store.isIdle = true;
-            } else if (fPos != std::string::npos) {
-                g_store.isIdle = false;
-            }
-        }
     }
 }
 
@@ -787,8 +761,8 @@ static void trackingTickLoop() {
 
         std::lock_guard<std::mutex> lk(g_store.mtx);
 
-        // Don't count time when idle or when no app is focused
-        if (g_store.isIdle || g_store.currentApp.empty())
+        // Count whenever an app is focused. Idle state is intentionally ignored.
+        if (g_store.currentApp.empty())
             continue;
 
         const std::string app = g_store.currentApp;

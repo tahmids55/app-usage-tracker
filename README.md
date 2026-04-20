@@ -45,7 +45,7 @@ The browser extension in `browser-ext/background.js`:
 
 - resolves active tab hostname (strips `www.`),
 - ignores non-http(s) URLs,
-- tracks only when a browser window is focused and the system is not idle/locked,
+- tracks when a browser window is focused,
 - posts accumulated domain session deltas (with periodic flush/checkpoint):
 
 ```json
@@ -149,7 +149,7 @@ Enable it using your normal GNOME extension workflow (Extensions app or CLI tool
 
 The extension requires:
 
-- `tabs`, `activeTab`, `idle` permissions,
+- `tabs`, `activeTab`, `alarms` permissions,
 - host access to `http://127.0.0.1:7878/*`.
 
 ## Runtime Notes

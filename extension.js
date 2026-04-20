@@ -103,11 +103,7 @@ class AppUsageTracker {
         this._focusSignalId = 0;
         this._uiTickId = 0;
         this._syncId = 0;
-        this._idleWatchId = 0;
-        this._activeWatchId = 0;
-        this._isIdle = false;
         this._localAddedSeconds = 0;
-        this._lastSyncOk = false;  // Track server reachability to guard local counting
 
         this._browserApps = new Set([
             'google chrome',
@@ -191,21 +187,6 @@ class AppUsageTracker {
             return GLib.SOURCE_CONTINUE;
         });
 
-        this._isIdle = false;
-        try {
-            const idleMonitor = global.backend.get_core_idle_monitor();
-            this._idleWatchId = idleMonitor.add_idle_watch(60000, () => {
-                this._isIdle = true;
-                this._postState();
-            });
-            this._activeWatchId = idleMonitor.add_user_active_watch(() => {
-                this._isIdle = false;
-                this._postState();
-            });
-        } catch (e) {
-            log('[AppUsageTracker] Failed to init idle monitor: ' + e);
-        }
-
         this._handleFocusChange();
         this._syncServerData();
     }
@@ -223,15 +204,6 @@ class AppUsageTracker {
             global.display.disconnect(this._focusSignalId);
             this._focusSignalId = 0;
         }
-
-        try {
-            const idleMonitor = global.backend.get_core_idle_monitor();
-            if (this._idleWatchId) idleMonitor.remove_watch(this._idleWatchId);
-            if (this._activeWatchId) idleMonitor.remove_watch(this._activeWatchId);
-        } catch (e) {}
-        
-        this._idleWatchId = 0;
-        this._activeWatchId = 0;
 
         if (this._soupSession)
             this._soupSession.abort();
@@ -299,8 +271,7 @@ class AppUsageTracker {
             if (!msg)
                 return;
             const payload = {
-                app: this._lastApp || '',
-                idle: this._isIdle || false
+                app: this._lastApp || ''
             };
             const bytes = new GLib.Bytes(new TextEncoder().encode(JSON.stringify(payload)));
             msg.set_request_body_from_bytes('application/json', bytes);
@@ -313,11 +284,11 @@ class AppUsageTracker {
     }
 
     _localUiTick() {
-        if (!this._isIdle && this._lastApp) {
+        if (this._lastApp) {
             // Cap local seconds to prevent runaway accumulation during server downtime.
             // 10 seconds = 2 sync intervals; beyond that we're clearly disconnected.
             const MAX_LOCAL_SECONDS = 10;
-            if (this._lastSyncOk && this._localAddedSeconds < MAX_LOCAL_SECONDS) {
+            if (this._localAddedSeconds < MAX_LOCAL_SECONDS) {
                 this._localAddedSeconds++;
             }
             this._emitUpdate();
@@ -770,17 +741,19 @@ class AppUsageTracker {
 
     _syncServerData() {
         this._getJson(this._statsUrl, statsData => {
-            if (!statsData) {
-                this._lastSyncOk = false;
+            if (!statsData)
                 return;
-            }
 
-            this._lastSyncOk = true;
             const normalized = this._normalizeStats(statsData);
 
             // Use _ingestServerSnapshot to preserve carry logic across server resets,
             // instead of directly overwriting _serverApps which destroys accumulated state.
             this._ingestServerSnapshot(normalized);
+
+            // Retry current state after stats become reachable so counting doesn't
+            // stay paused if an earlier focus-state post failed while server was down.
+            this._postState();
+
             this._localAddedSeconds = 0;
 
             const fromTotals = this._updateCurrentDomainFromTotals(this._webTotals);
