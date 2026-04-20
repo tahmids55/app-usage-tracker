@@ -36,7 +36,8 @@ struct Store {
     std::map<std::string, AppEntry> apps;
     std::map<std::string, std::map<std::string, AppEntry>> dailyApps;
     std::string currentWebDomain;
-    std::string currentWebApp;
+    std::string currentApp;  // Active app name (any app, not just browsers)
+    bool isIdle = false;
     std::mutex mtx;
 };
 
@@ -63,6 +64,29 @@ static std::string jsonEsc(const std::string &s) {
         else o += c;
     }
     return o;
+}
+
+static std::string toLower(const std::string &s) {
+    std::string out = s;
+    std::transform(out.begin(), out.end(), out.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return out;
+}
+
+static bool isBrowserApp(const std::string &appName) {
+    if (appName.empty())
+        return false;
+    const std::string lower = toLower(appName);
+    return lower == "google chrome"
+        || lower == "chrome"
+        || lower == "chromium"
+        || lower == "chromium browser"
+        || lower == "brave"
+        || lower == "brave browser"
+        || lower == "brave web browser"
+        || lower == "firefox"
+        || lower == "firefox web browser"
+        || lower == "microsoft edge";
 }
 
 static std::string mapToJson(const std::map<std::string, long long> &m) {
@@ -192,7 +216,7 @@ static std::string buildHistory() {
 
     std::ostringstream o;
     o << "{\"currentDomain\":\"" << jsonEsc(g_store.currentWebDomain) << "\",";
-    o << "\"currentApp\":\"" << jsonEsc(g_store.currentWebApp) << "\",";
+    o << "\"currentApp\":\"" << jsonEsc(g_store.currentApp) << "\",";
     o << "\"tabs\":[";
     bool first = true;
     for (const auto &[domain, sec] : rows) {
@@ -598,9 +622,9 @@ static void resetTodayDataNow() {
     {
         std::lock_guard<std::mutex> lk(g_store.mtx);
         g_store.dailyApps.erase(today);
-        g_store.apps.clear();
+        rebuildLifetimeFromDailyLocked();
         g_store.currentWebDomain.clear();
-        g_store.currentWebApp.clear();
+        g_store.currentApp.clear();
     }
 
     saveToDisk();
@@ -618,16 +642,9 @@ static void maybeResetLiveStatsAt2359() {
     if (g_lastScheduledResetDate == dateKey)
         return;
 
-    {
-        std::lock_guard<std::mutex> lk(g_store.mtx);
-        g_store.apps.clear();
-        g_store.currentWebDomain.clear();
-        g_store.currentWebApp.clear();
-    }
-
     g_lastScheduledResetDate = dateKey;
     saveToDisk();
-    std::cout << "[server] Scheduled 23:59 reset completed for " << dateKey << "\n";
+    std::cout << "[server] Scheduled 23:59 rollover checkpoint saved for " << dateKey << "\n";
 }
 
 static void saveToDisk() {
@@ -713,29 +730,116 @@ static void handleActiveWebPayload(const std::string &body) {
     if (domain.empty())
         domain = jStr(body, "name");
 
-    std::string app = jStr(body, "app");
-    if (app.empty())
-        app = jStr(body, "parent");
-
     std::lock_guard<std::mutex> lk(g_store.mtx);
+    // Only update the web domain — the GNOME extension is the authoritative
+    // source for currentApp.  Letting the browser extension override currentApp
+    // caused a race condition where domain time was attributed to non-browser
+    // apps after a focus switch.
     g_store.currentWebDomain = domain;
-    g_store.currentWebApp = app;
 }
 
+static void handleStatePayload(const std::string &body) {
+    std::lock_guard<std::mutex> lk(g_store.mtx);
+
+    // Update active app name from GNOME extension
+    if (body.find("\"app\"") != std::string::npos) {
+        std::string app = jStr(body, "app");
+        g_store.currentApp = app;
+        // When switching away from a browser to a non-browser app,
+        // clear the web domain so the tick loop doesn't count stale domains.
+        if (!app.empty()) {
+            // Domain will be set separately via /active-web from the browser extension.
+            // Only clear if we're switching to a non-empty app that isn't the same
+            // browser that set the domain.
+            // We can't know here if the new app is a browser, so we always clear.
+            // The browser extension will re-post the domain momentarily if needed.
+            g_store.currentWebDomain.clear();
+        }
+    }
+
+    if (body.find("\"web\"") != std::string::npos) {
+        g_store.currentWebDomain = jStr(body, "web");
+    }
+
+    // Parse idle state
+    auto idlePos = body.find("\"idle\"");
+    if (idlePos != std::string::npos) {
+        auto valPos = body.find(":", idlePos);
+        if (valPos != std::string::npos) {
+            auto tPos = body.find("true", valPos);
+            auto fPos = body.find("false", valPos);
+            if (tPos != std::string::npos && (fPos == std::string::npos || tPos < fPos)) {
+                g_store.isIdle = true;
+            } else if (fPos != std::string::npos) {
+                g_store.isIdle = false;
+            }
+        }
+    }
+}
+
+static void trackingTickLoop() {
+    while (g_running) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        if (!g_running) break;
+
+        const std::string dateKey = currentLocalDate();
+
+        std::lock_guard<std::mutex> lk(g_store.mtx);
+
+        // Don't count time when idle or when no app is focused
+        if (g_store.isIdle || g_store.currentApp.empty())
+            continue;
+
+        const std::string app = g_store.currentApp;
+        g_store.apps[app].total += 1;
+        g_store.dailyApps[dateKey][app].total += 1;
+
+        // If a web domain is active and the focused app is a browser, count domain time.
+        // Only browser apps should have website children — non-browser apps must never
+        // accumulate domain children even if currentWebDomain is non-empty (race condition).
+        if (!g_store.currentWebDomain.empty() && isBrowserApp(app)) {
+            const std::string domain = g_store.currentWebDomain;
+            auto &entry = g_store.apps[app];
+            entry.children[domain] += 1;
+
+            long long entryChildTotal = 0;
+            for (const auto &[d, sec] : entry.children) {
+                (void)d;
+                entryChildTotal += sec;
+            }
+            if (entry.total < entryChildTotal)
+                entry.total = entryChildTotal;
+
+            auto &dailyEntry = g_store.dailyApps[dateKey][app];
+            dailyEntry.children[domain] += 1;
+
+            long long dailyChildTotal = 0;
+            for (const auto &[d, sec] : dailyEntry.children) {
+                (void)d;
+                dailyChildTotal += sec;
+            }
+            if (dailyEntry.total < dailyChildTotal)
+                dailyEntry.total = dailyChildTotal;
+        }
+    }
+}
+
+// /track is now state-only: it updates the currently active app/domain
+// without adding duration. The tick loop is the single source of truth
+// for time counting, which prevents double-counting.
 static void handleTrackPayload(const std::string &body) {
     const auto type = jStr(body, "type");
     const auto name = jStr(body, "name");
-    const auto duration = jNum(body, "duration");
 
-    if (name.empty() || duration <= 0)
+    if (name.empty())
         return;
 
-    const std::string dateKey = currentLocalDate();
     std::lock_guard<std::mutex> lk(g_store.mtx);
 
     if (type == "app") {
-        g_store.apps[name].total += duration;
-        g_store.dailyApps[dateKey][name].total += duration;
+        // Set active app — tick loop will count the time
+        g_store.currentApp = name;
         return;
     }
 
@@ -743,23 +847,21 @@ static void handleTrackPayload(const std::string &body) {
         std::string parent = jStr(body, "app");
         if (parent.empty())
             parent = jStr(body, "parent");
-        if (parent.empty())
-            parent = "Google Chrome";
 
-        auto &entry = g_store.apps[parent];
-        entry.total += duration;
-        entry.children[name] += duration;
-
+        // Set active domain and app — tick loop will count the time
         g_store.currentWebDomain = name;
-        g_store.currentWebApp = parent;
-
-        auto &dailyEntry = g_store.dailyApps[dateKey][parent];
-        dailyEntry.total += duration;
-        dailyEntry.children[name] += duration;
+        if (!parent.empty())
+            g_store.currentApp = parent;
     }
 }
 
 static void handleClient(int fd) {
+    // Set receive timeout to prevent threads hanging on slow/malicious clients
+    struct timeval rcvTimeout;
+    rcvTimeout.tv_sec = 5;
+    rcvTimeout.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &rcvTimeout, sizeof(rcvTimeout));
+
     char buf[4096];
     std::string raw;
     while (true) {
@@ -817,6 +919,9 @@ static void handleClient(int fd) {
 
     if (path == "/track" && method == "POST") {
         handleTrackPayload(body);
+        sendResponse(fd, "200 OK", "application/json", "{\"ok\":true}", true);
+    } else if (path == "/state" && method == "POST") {
+        handleStatePayload(body);
         sendResponse(fd, "200 OK", "application/json", "{\"ok\":true}", true);
     } else if (path == "/reset-today" && method == "POST") {
         resetTodayDataNow();
@@ -884,6 +989,7 @@ int main() {
     signal(SIGTERM, onSignal);
 
     std::thread(saveLoop).detach();
+    std::thread(trackingTickLoop).detach();
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0)

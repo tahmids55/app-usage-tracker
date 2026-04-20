@@ -94,6 +94,16 @@ function aggregateDomains(apps) {
 		.sort((a, b) => b.seconds - a.seconds);
 }
 
+const BROWSER_APPS = new Set([
+	'google chrome', 'chrome', 'chromium', 'chromium browser',
+	'brave', 'brave browser', 'brave web browser',
+	'firefox', 'firefox web browser', 'microsoft edge',
+]);
+
+function isBrowserApp(name) {
+	return BROWSER_APPS.has(String(name || '').toLowerCase());
+}
+
 function normalizeStats(statsData) {
 	const appsObj = statsData && typeof statsData === 'object' ? statsData.apps : null;
 	const rows = [];
@@ -102,10 +112,13 @@ function normalizeStats(statsData) {
 		for (const [name, entryRaw] of Object.entries(appsObj)) {
 			const entry = entryRaw && typeof entryRaw === 'object' ? entryRaw : {};
 			const childrenObj = entry.children && typeof entry.children === 'object' ? entry.children : {};
-			const children = Object.entries(childrenObj)
-				.map(([childName, seconds]) => ({ name: childName, seconds: safeNumber(seconds) }))
-				.filter(child => child.name && child.seconds > 0)
-				.sort((a, b) => b.seconds - a.seconds);
+			// Only browser apps should have website children
+			const children = isBrowserApp(name)
+				? Object.entries(childrenObj)
+					.map(([childName, seconds]) => ({ name: childName, seconds: safeNumber(seconds) }))
+					.filter(child => child.name && child.seconds > 0)
+					.sort((a, b) => b.seconds - a.seconds)
+				: [];
 
 			const childTotal = children.reduce((sum, child) => sum + child.seconds, 0);
 			const total = Math.max(safeNumber(entry.total), childTotal);

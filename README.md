@@ -45,8 +45,8 @@ The browser extension in `browser-ext/background.js`:
 
 - resolves active tab hostname (strips `www.`),
 - ignores non-http(s) URLs,
-- clears current domain when system is idle/locked,
-- every second posts web usage increments:
+- tracks only when a browser window is focused and the system is not idle/locked,
+- posts accumulated domain session deltas (with periodic flush/checkpoint):
 
 ```json
 { "type": "web", "name": "example.com", "duration": 1 }
@@ -58,9 +58,9 @@ The server in `server/server.cpp`:
 
 - binds to `127.0.0.1:7878`,
 - accepts CORS-enabled requests,
-- updates in-memory counters for `app` and `web`,
+- updates in-memory counters for `app` and `web` without double-counting browser totals,
 - exposes `GET /stats` with combined totals,
-- autosaves every 60 seconds and on shutdown.
+- autosaves every 60 seconds, at rollover checkpoint, and on shutdown.
 
 Persistence location:
 
