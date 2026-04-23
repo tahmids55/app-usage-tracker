@@ -95,7 +95,6 @@ class AppUsageTracker {
         this._lastApp = null;
         this._lastAppGicon = null;
         this._currentDomain = null;
-        this._lastWebTotals = new Map();
         this._siteIconCache = new Map();
         this._siteIconInFlight = new Set();
         this._appIconCache = new Map();
@@ -104,16 +103,6 @@ class AppUsageTracker {
         this._uiTickId = 0;
         this._syncId = 0;
         this._localAddedSeconds = 0;
-
-        this._browserApps = new Set([
-            'google chrome',
-            'chrome',
-            'chromium',
-            'chromium browser',
-            'brave',
-            'brave browser',
-            'brave web browser',
-        ]);
 
         try {
             this._soupSession = new Soup.Session();
@@ -125,6 +114,7 @@ class AppUsageTracker {
         this._serverUrl = 'http://127.0.0.1:7878/track';
         this._stateUrl = 'http://127.0.0.1:7878/state';
         this._statsUrl = 'http://127.0.0.1:7878/stats';
+        this._dailyStatsUrl = 'http://127.0.0.1:7878/daily?date=today';
         this._historyUrl = 'http://127.0.0.1:7878/history';
         this._dashboardUrl = 'http://127.0.0.1:7878/dashboard';
         this._serverBinaryPath = GLib.build_filenamev([this._extensionPath, 'server', 'usage-tracker-server']);
@@ -177,7 +167,7 @@ class AppUsageTracker {
             this._handleFocusChange();
         });
 
-        this._syncId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5, () => {
+        this._syncId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
             this._syncServerData();
             return GLib.SOURCE_CONTINUE;
         });
@@ -212,7 +202,6 @@ class AppUsageTracker {
         this._lastAppGicon = null;
         this._currentDomain = null;
         this._localAddedSeconds = 0;
-        this._lastWebTotals.clear();
         this._siteIconCache.clear();
         this._siteIconInFlight.clear();
         this._appIconCache.clear();
@@ -229,10 +218,26 @@ class AppUsageTracker {
             this._onUpdate();
     }
 
-    _isBrowserApp(appName) {
+    _browserFamilyKey(appName) {
         if (!appName)
-            return false;
-        return this._browserApps.has(String(appName).toLowerCase());
+            return null;
+
+        const lower = String(appName).toLowerCase();
+        if (lower.includes('brave'))
+            return 'brave';
+        if (lower.includes('chromium'))
+            return 'chromium';
+        if (lower.includes('chrome'))
+            return 'chrome';
+        if (lower.includes('firefox'))
+            return 'firefox';
+        if (lower.includes('edge'))
+            return 'edge';
+        return null;
+    }
+
+    _isBrowserApp(appName) {
+        return Boolean(this._browserFamilyKey(appName));
     }
 
     _getJson(url, callback) {
@@ -285,12 +290,8 @@ class AppUsageTracker {
 
     _localUiTick() {
         if (this._lastApp) {
-            // Cap local seconds to prevent runaway accumulation during server downtime.
-            // 10 seconds = 2 sync intervals; beyond that we're clearly disconnected.
-            const MAX_LOCAL_SECONDS = 10;
-            if (this._localAddedSeconds < MAX_LOCAL_SECONDS) {
-                this._localAddedSeconds++;
-            }
+            // Keep the panel reactive, but rely on server totals to avoid drift
+            // between top-bar and dashboard calculations.
             this._emitUpdate();
         }
     }
@@ -639,39 +640,26 @@ class AppUsageTracker {
         if (!normalized || !(normalized.apps instanceof Map))
             return;
 
-        if (normalized.apps.size === 0)
-            return;
-
+        const nextApps = new Map();
         for (const [appName, entry] of normalized.apps.entries()) {
-            const prevEntry = this._serverApps.get(appName) || {total: 0, children: new Map()};
-            const prevRaw = this._rawServerApps.get(appName) || 0;
-            const rawTotal = Number(entry.total) || 0;
-            let carry = this._appCarry.get(appName) || 0;
-
-            if (rawTotal < prevRaw)
-                carry += prevRaw;
-
-            this._rawServerApps.set(appName, rawTotal);
-            this._appCarry.set(appName, carry);
-
-            const mergedChildren = this._snapshotChildren(appName, entry.children, prevEntry);
+            const nextChildren = new Map(entry.children || []);
             let childSum = 0;
-            for (const sec of mergedChildren.values())
+            for (const sec of nextChildren.values())
                 childSum += sec;
 
-            const effectiveTotal = Math.max(prevEntry.total, carry + rawTotal, childSum);
-            this._serverApps.set(appName, {
-                total: effectiveTotal,
-                children: mergedChildren,
+            nextApps.set(appName, {
+                total: Math.max(Number(entry.total) || 0, childSum),
+                children: nextChildren,
             });
         }
 
         const webTotals = new Map();
-        for (const [, entry] of this._serverApps.entries()) {
+        for (const [, entry] of nextApps.entries()) {
             for (const [domain, sec] of entry.children.entries())
                 webTotals.set(domain, (webTotals.get(domain) || 0) + sec);
         }
 
+        this._serverApps = nextApps;
         this._webTotals = webTotals;
     }
 
@@ -720,34 +708,12 @@ class AppUsageTracker {
         return null;
     }
 
-    _updateCurrentDomainFromTotals(webTotals) {
-        let bestDomain = null;
-        let bestDelta = 0;
-
-        for (const [domain, total] of webTotals.entries()) {
-            const prev = this._lastWebTotals.get(domain) || 0;
-            const delta = total - prev;
-            if (delta > bestDelta) {
-                bestDelta = delta;
-                bestDomain = domain;
-            }
-        }
-
-        this._lastWebTotals = new Map(webTotals);
-        if (bestDelta > 0 && bestDomain)
-            return bestDomain;
-        return null;
-    }
-
     _syncServerData() {
-        this._getJson(this._statsUrl, statsData => {
+        this._getJson(this._dailyStatsUrl, statsData => {
             if (!statsData)
                 return;
 
             const normalized = this._normalizeStats(statsData);
-
-            // Use _ingestServerSnapshot to preserve carry logic across server resets,
-            // instead of directly overwriting _serverApps which destroys accumulated state.
             this._ingestServerSnapshot(normalized);
 
             // Retry current state after stats become reachable so counting doesn't
@@ -755,13 +721,6 @@ class AppUsageTracker {
             this._postState();
 
             this._localAddedSeconds = 0;
-
-            const fromTotals = this._updateCurrentDomainFromTotals(this._webTotals);
-
-            if (!this._currentDomain) {
-                if (fromTotals && this._currentDomain !== fromTotals)
-                    this._currentDomain = fromTotals;
-            }
 
             if (this._isBrowserApp(this._lastApp) && this._currentDomain)
                 this._ensureSiteIcon(this._currentDomain);
@@ -868,30 +827,30 @@ class AppUsageTracker {
     }
 
     getCurrentDisplaySeconds() {
-        const liveElapsed = this._localAddedSeconds || 0;
-
         if (this._isBrowserApp(this._lastApp) && this._currentDomain) {
+            const family = this._browserFamilyKey(this._lastApp);
+
             // Prioritize the currently active browser app for domain lookup
             if (this._serverApps.has(this._lastApp)) {
                 const sec = this._serverApps.get(this._lastApp).children.get(this._currentDomain) || 0;
                 if (sec > 0)
-                    return sec + liveElapsed;
+                    return sec;
             }
 
-            // Fall back to searching other browser apps
+            // Fall back to searching equivalent browser app labels (same family)
             for (const [appName, entry] of this._serverApps.entries()) {
                 if (!this._isBrowserApp(appName) || appName === this._lastApp)
                     continue;
+
+                if (family && this._browserFamilyKey(appName) !== family)
+                    continue;
+
                 const sec = entry.children.get(this._currentDomain) || 0;
                 if (sec > 0)
-                    return sec + liveElapsed;
+                    return sec;
             }
 
-            const webTotal = this._webTotals.get(this._currentDomain) || 0;
-            if (webTotal > 0)
-                return webTotal + liveElapsed;
-
-            return liveElapsed;
+            return 0;
         }
 
         if (!this._lastApp)
@@ -899,10 +858,10 @@ class AppUsageTracker {
 
         if (this._serverApps.has(this._lastApp)) {
             const base = this._serverApps.get(this._lastApp).total;
-            return Math.max(0, base + liveElapsed);
+            return Math.max(0, base);
         }
 
-        return liveElapsed;
+        return 0;
     }
 
     isAppActive(appName) {
@@ -931,38 +890,6 @@ class AppUsageTracker {
             });
         }
 
-        const liveElapsed = this._localAddedSeconds || 0;
-        if (liveElapsed > 0 && this._lastApp) {
-            const idx = rows.findIndex(row => row.name.toLowerCase() === String(this._lastApp).toLowerCase());
-
-            if (idx >= 0) {
-                rows[idx].total += liveElapsed;
-
-                if (this._isBrowserApp(this._lastApp) && this._currentDomain) {
-                    const child = rows[idx].children.find(entry => entry.name === this._currentDomain);
-                    if (child) {
-                        child.seconds += liveElapsed;
-                    } else {
-                        rows[idx].children.push({name: this._currentDomain, seconds: liveElapsed});
-                    }
-
-                    rows[idx].children.sort((a, b) => b.seconds - a.seconds);
-                    if (rows[idx].children.length > limitChildren)
-                        rows[idx].children = rows[idx].children.slice(0, limitChildren);
-                }
-            } else {
-                const children = this._isBrowserApp(this._lastApp) && this._currentDomain
-                    ? [{name: this._currentDomain, seconds: liveElapsed}]
-                    : [];
-
-                rows.push({
-                    name: this._lastApp,
-                    total: liveElapsed,
-                    children,
-                });
-            }
-        }
-
         rows.sort((a, b) => b.total - a.total);
         return rows.slice(0, Math.max(1, Math.floor(limitApps || 1)));
     }
@@ -971,8 +898,6 @@ class AppUsageTracker {
         let total = 0;
         for (const [, entry] of this._serverApps.entries())
             total += Math.max(0, Math.floor(entry.total || 0));
-
-        total += (this._localAddedSeconds || 0);
         return total;
     }
 

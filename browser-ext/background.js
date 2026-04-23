@@ -1,6 +1,6 @@
 const ACTIVE_URL = "http://127.0.0.1:7878/active-web";
 const KEEPALIVE_ALARM_NAME = "keepalive";
-const KEEPALIVE_INTERVAL_MINUTES = 0.4; // ~25 seconds — keeps service worker alive
+const KEEPALIVE_INTERVAL_MINUTES = 0.1; // ~25 seconds — keeps service worker alive
 
 let currentDomain = null;
 let isBrowserFocused = false;
@@ -9,14 +9,39 @@ let lastConfirmedActiveDomain = null;
 let pendingActiveDomain = undefined;
 let activeDomainPostInFlight = false;
 
-function detectParentApp() {
+function detectParentAppFromUA() {
   const ua = navigator.userAgent || '';
   if (ua.includes('Brave')) return 'Brave Web Browser';
+  if (ua.includes('Edg/')) return 'Microsoft Edge';
   if (ua.includes('Chromium')) return 'Chromium';
+  if (ua.includes('Chrome/')) return 'Google Chrome';
   return 'Google Chrome';
 }
 
-const PARENT_APP = detectParentApp();
+let PARENT_APP = detectParentAppFromUA();
+
+function boostParentAppDetection() {
+  // Brave may omit a distinct UA token; its extension context exposes navigator.brave.
+  try {
+    if (navigator.brave && typeof navigator.brave.isBrave === 'function') {
+      navigator.brave.isBrave().then(isBrave => {
+        if (!isBrave)
+          return;
+        if (PARENT_APP === 'Brave Web Browser')
+          return;
+
+        PARENT_APP = 'Brave Web Browser';
+        // Force a resend so server switches family attribution immediately.
+        lastConfirmedActiveDomain = '__force_resend__';
+        postActiveDomain(currentDomain);
+      }).catch(() => {
+        // Ignore runtime detection errors and keep UA-based fallback.
+      });
+    }
+  } catch (e) {
+    // Ignore detection failures and keep UA-based fallback.
+  }
+}
 
 function postActiveDomain(domain) {
   const normalizedDomain = domain || null;
@@ -180,3 +205,5 @@ chrome.windows.getLastFocused({ populate: false }, win => {
 
   updateCurrentTab();
 });
+
+boostParentAppDetection();

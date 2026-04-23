@@ -1,6 +1,6 @@
 const DAILY_URL = '/daily';
 const DAILY_DATES_URL = '/daily-dates';
-const REFRESH_MS = 5000;
+const REFRESH_MS = 1000;
 const TREND_DAYS_LIMIT = 14;
 const DUMMY_DAYS_BEFORE_TODAY = 7;
 const TREND_SCALE_MAX_HOURS = 10;
@@ -94,14 +94,13 @@ function aggregateDomains(apps) {
 		.sort((a, b) => b.seconds - a.seconds);
 }
 
-const BROWSER_APPS = new Set([
-	'google chrome', 'chrome', 'chromium', 'chromium browser',
-	'brave', 'brave browser', 'brave web browser',
-	'firefox', 'firefox web browser', 'microsoft edge',
-]);
-
 function isBrowserApp(name) {
-	return BROWSER_APPS.has(String(name || '').toLowerCase());
+	const lower = String(name || '').toLowerCase();
+	return lower.includes('brave')
+		|| lower.includes('chrome')
+		|| lower.includes('chromium')
+		|| lower.includes('firefox')
+		|| lower.includes('edge');
 }
 
 function normalizeStats(statsData) {

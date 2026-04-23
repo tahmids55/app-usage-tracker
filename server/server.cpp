@@ -35,7 +35,7 @@ struct AppEntry {
 struct Store {
     std::map<std::string, AppEntry> apps;
     std::map<std::string, std::map<std::string, AppEntry>> dailyApps;
-    std::string currentWebDomain;
+    std::map<std::string, std::string> currentWebDomainByBrowser;
     std::string currentApp;  // Active app name (any app, not just browsers)
     std::mutex mtx;
 };
@@ -72,20 +72,32 @@ static std::string toLower(const std::string &s) {
     return out;
 }
 
-static bool isBrowserApp(const std::string &appName) {
+static std::string browserFamilyKey(const std::string &appName) {
     if (appName.empty())
-        return false;
+        return {};
+
     const std::string lower = toLower(appName);
-    return lower == "google chrome"
-        || lower == "chrome"
-        || lower == "chromium"
-        || lower == "chromium browser"
-        || lower == "brave"
-        || lower == "brave browser"
-        || lower == "brave web browser"
-        || lower == "firefox"
-        || lower == "firefox web browser"
-        || lower == "microsoft edge";
+
+    if (lower.find("brave") != std::string::npos)
+        return "brave";
+
+    if (lower.find("chromium") != std::string::npos)
+        return "chromium";
+
+    if (lower.find("chrome") != std::string::npos)
+        return "chrome";
+
+    if (lower.find("firefox") != std::string::npos)
+        return "firefox";
+
+    if (lower.find("edge") != std::string::npos)
+        return "edge";
+
+    return {};
+}
+
+static bool isBrowserApp(const std::string &appName) {
+    return !browserFamilyKey(appName).empty();
 }
 
 static std::string mapToJson(const std::map<std::string, long long> &m) {
@@ -213,8 +225,16 @@ static std::string buildHistory() {
         return a.second > b.second;
     });
 
+    std::string currentDomain;
+    const std::string family = browserFamilyKey(g_store.currentApp);
+    if (!family.empty()) {
+        const auto it = g_store.currentWebDomainByBrowser.find(family);
+        if (it != g_store.currentWebDomainByBrowser.end())
+            currentDomain = it->second;
+    }
+
     std::ostringstream o;
-    o << "{\"currentDomain\":\"" << jsonEsc(g_store.currentWebDomain) << "\",";
+    o << "{\"currentDomain\":\"" << jsonEsc(currentDomain) << "\",";
     o << "\"currentApp\":\"" << jsonEsc(g_store.currentApp) << "\",";
     o << "\"tabs\":[";
     bool first = true;
@@ -622,7 +642,7 @@ static void resetTodayDataNow() {
         std::lock_guard<std::mutex> lk(g_store.mtx);
         g_store.dailyApps.erase(today);
         rebuildLifetimeFromDailyLocked();
-        g_store.currentWebDomain.clear();
+        g_store.currentWebDomainByBrowser.clear();
         g_store.currentApp.clear();
     }
 
@@ -728,13 +748,25 @@ static void handleActiveWebPayload(const std::string &body) {
     std::string domain = jStr(body, "domain");
     if (domain.empty())
         domain = jStr(body, "name");
+    std::string app = jStr(body, "app");
+    if (app.empty())
+        app = jStr(body, "parent");
 
     std::lock_guard<std::mutex> lk(g_store.mtx);
-    // Only update the web domain — the GNOME extension is the authoritative
-    // source for currentApp.  Letting the browser extension override currentApp
-    // caused a race condition where domain time was attributed to non-browser
-    // apps after a focus switch.
-    g_store.currentWebDomain = domain;
+
+    // Prefer explicit browser identity from the browser extension payload.
+    std::string family = browserFamilyKey(app);
+    if (family.empty())
+        family = browserFamilyKey(g_store.currentApp);
+    if (family.empty())
+        return;
+
+    if (domain.empty()) {
+        g_store.currentWebDomainByBrowser.erase(family);
+        return;
+    }
+
+    g_store.currentWebDomainByBrowser[family] = domain;
 }
 
 static void handleStatePayload(const std::string &body) {
@@ -747,7 +779,15 @@ static void handleStatePayload(const std::string &body) {
     }
 
     if (body.find("\"web\"") != std::string::npos) {
-        g_store.currentWebDomain = jStr(body, "web");
+        // Backward compatibility for clients that still send web via /state.
+        const std::string family = browserFamilyKey(g_store.currentApp);
+        if (!family.empty()) {
+            const std::string web = jStr(body, "web");
+            if (web.empty())
+                g_store.currentWebDomainByBrowser.erase(family);
+            else
+                g_store.currentWebDomainByBrowser[family] = web;
+        }
     }
 }
 
@@ -769,11 +809,17 @@ static void trackingTickLoop() {
         g_store.apps[app].total += 1;
         g_store.dailyApps[dateKey][app].total += 1;
 
+        std::string domain;
+        if (isBrowserApp(app)) {
+            const std::string family = browserFamilyKey(app);
+            const auto it = g_store.currentWebDomainByBrowser.find(family);
+            if (it != g_store.currentWebDomainByBrowser.end())
+                domain = it->second;
+        }
+
         // If a web domain is active and the focused app is a browser, count domain time.
-        // Only browser apps should have website children — non-browser apps must never
-        // accumulate domain children even if currentWebDomain is non-empty (race condition).
-        if (!g_store.currentWebDomain.empty() && isBrowserApp(app)) {
-            const std::string domain = g_store.currentWebDomain;
+        // Domain state is tracked per browser family so Brave and Chrome are isolated.
+        if (!domain.empty() && isBrowserApp(app)) {
             auto &entry = g_store.apps[app];
             entry.children[domain] += 1;
 
@@ -822,10 +868,15 @@ static void handleTrackPayload(const std::string &body) {
         if (parent.empty())
             parent = jStr(body, "parent");
 
-        // Set active domain and app — tick loop will count the time
-        g_store.currentWebDomain = name;
         if (!parent.empty())
             g_store.currentApp = parent;
+
+        // Legacy compatibility for /track web payloads.
+        std::string family = browserFamilyKey(parent);
+        if (family.empty())
+            family = browserFamilyKey(g_store.currentApp);
+        if (!family.empty())
+            g_store.currentWebDomainByBrowser[family] = name;
     }
 }
 
