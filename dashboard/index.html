@@ -1,590 +1,478 @@
 <!doctype html>
 <html lang="en">
 <head>
-	<meta charset="utf-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<title>App Usage Dashboard</title>
-	<style>
-		:root {
-			--bg-1: #f5efe3;
-			--bg-2: #e4eee6;
-			--surface: rgba(255, 255, 255, 0.78);
-			--surface-strong: rgba(255, 255, 255, 0.92);
-			--border: rgba(30, 41, 59, 0.14);
-			--text: #0f172a;
-			--muted: #475569;
-			--accent: #0b7285;
-			--accent-2: #2f855a;
-			--accent-3: #c05621;
-			--accent-4: #2b6cb0;
-			--shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
-		}
-
-		* {
-			box-sizing: border-box;
-		}
-
-		body {
-			margin: 0;
-			min-height: 100vh;
-			font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
-			color: var(--text);
-			background:
-				radial-gradient(circle at 12% 18%, rgba(11, 114, 133, 0.2), transparent 34%),
-				radial-gradient(circle at 86% 22%, rgba(192, 86, 33, 0.16), transparent 28%),
-				linear-gradient(145deg, var(--bg-1), var(--bg-2));
-			padding: 24px;
-		}
-
-		.app-shell {
-			max-width: 1180px;
-			margin: 0 auto;
-			animation: rise 420ms ease;
-		}
-
-		.header {
-			display: flex;
-			align-items: flex-start;
-			justify-content: space-between;
-			gap: 16px;
-			margin-bottom: 20px;
-		}
-
-		.headline {
-			margin: 0;
-			font-size: clamp(1.6rem, 4vw, 2.5rem);
-			line-height: 1.1;
-			letter-spacing: 0.01em;
-		}
-
-		.subline {
-			margin: 8px 0 0;
-			color: var(--muted);
-			font-size: 0.98rem;
-		}
-
-		.header-tools {
-			display: flex;
-			flex-direction: column;
-			align-items: flex-end;
-			gap: 10px;
-			min-width: 230px;
-		}
-
-		.btn {
-			border: 1px solid var(--border);
-			background: var(--surface-strong);
-			color: var(--text);
-			border-radius: 999px;
-			padding: 9px 16px;
-			font-size: 0.9rem;
-			cursor: pointer;
-			transition: transform 140ms ease, box-shadow 140ms ease;
-			box-shadow: 0 3px 10px rgba(2, 6, 23, 0.08);
-		}
-
-		.btn:hover {
-			transform: translateY(-1px);
-			box-shadow: 0 7px 16px rgba(2, 6, 23, 0.12);
-		}
-
-		.last-update {
-			color: var(--muted);
-			font-size: 0.86rem;
-		}
-
-		.metrics-grid {
-			display: grid;
-			grid-template-columns: repeat(12, minmax(0, 1fr));
-			gap: 14px;
-			margin-bottom: 16px;
-		}
-
-		.card {
-			background: var(--surface);
-			border: 1px solid var(--border);
-			backdrop-filter: blur(8px);
-			-webkit-backdrop-filter: blur(8px);
-			border-radius: 16px;
-			box-shadow: var(--shadow);
-		}
-
-		.metric {
-			grid-column: span 2;
-			padding: 16px 18px;
-			min-height: 112px;
-			position: relative;
-			overflow: hidden;
-			animation: rise 420ms ease;
-		}
-
-		.metric::before {
-			content: "";
-			position: absolute;
-			inset: 0 0 auto 0;
-			height: 3px;
-			background: linear-gradient(90deg, rgba(11, 114, 133, 0.9), rgba(43, 108, 176, 0.8));
-		}
-
-		.metric--primary {
-			grid-column: span 6;
-		}
-
-		.metric-title {
-			font-size: 0.82rem;
-			text-transform: uppercase;
-			letter-spacing: 0.06em;
-			color: var(--muted);
-			margin-bottom: 8px;
-		}
-
-		.metric-value {
-			font-size: clamp(1.3rem, 2.3vw, 1.95rem);
-			line-height: 1;
-			font-weight: 700;
-			font-variant-numeric: tabular-nums;
-		}
-
-		.metric-caption {
-			margin-top: 8px;
-			font-size: 0.82rem;
-			color: var(--muted);
-		}
-
-		.layout {
-			display: grid;
-			grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-			gap: 14px;
-		}
-
-		.panel {
-			padding: 16px;
-			min-height: 360px;
-			animation: rise 520ms ease;
-		}
-
-		.panel-title {
-			margin: 0;
-			font-size: 1.2rem;
-			letter-spacing: 0.01em;
-		}
-
-		.panel-subtitle {
-			margin: 6px 0 14px;
-			color: var(--muted);
-			font-size: 0.9rem;
-		}
-
-		.panel-controls {
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			gap: 10px;
-			margin-bottom: 10px;
-			min-height: 38px;
-			width: 100%;
-		}
-
-		.date-nav-btn {
-			border: 1px solid var(--border);
-			background: rgba(255, 255, 255, 0.86);
-			color: var(--text);
-			border-radius: 10px;
-			padding: 9px 14px;
-			font-weight: 700;
-			font-size: 1.08rem;
-			line-height: 1;
-			cursor: pointer;
-		}
-
-		.date-nav-btn:disabled {
-			opacity: 0.45;
-			cursor: not-allowed;
-		}
-
-		.date-chip {
-			padding: 10px 16px;
-			border: 1px solid var(--border);
-			border-radius: 10px;
-			background: rgba(255, 255, 255, 0.72);
-			font-size: 0.98rem;
-			font-weight: 600;
-			min-width: 190px;
-			text-align: center;
-		}
-
-		.bar-chart {
-			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
-			align-items: end;
-			gap: 10px;
-			height: 280px;
-			padding: 10px 6px;
-			border: 1px solid rgba(15, 23, 42, 0.08);
-			border-radius: 14px;
-			background:
-				linear-gradient(0deg, rgba(148, 163, 184, 0.11) 1px, transparent 1px),
-				rgba(255, 255, 255, 0.45);
-			background-size: 100% 22%;
-		}
-
-		.bar-col {
-			display: flex;
-			flex-direction: column;
-			align-items: center;
-			gap: 6px;
-			min-width: 0;
-		}
-
-		.bar-col-val {
-			font-size: 0.72rem;
-			font-weight: 600;
-			color: #334155;
-			line-height: 1;
-		}
-
-		.bar-col-track {
-			height: 172px;
-			width: 100%;
-			border-radius: 12px;
-			background: rgba(148, 163, 184, 0.3);
-			overflow: hidden;
-			border: 1px solid rgba(15, 23, 42, 0.08);
-			display: flex;
-			align-items: flex-end;
-		}
-
-		.bar-col-fill {
-			width: 100%;
-			min-height: 6px;
-			background: linear-gradient(180deg, #4b5563, #374151);
-			border-radius: 10px 10px 0 0;
-			transition: height 220ms ease;
-		}
-
-		.bar-col.is-selected .bar-col-fill {
-			background: linear-gradient(180deg, #374151, #1f2937);
-		}
-
-		.bar-col-date {
-			font-size: 0.72rem;
-			color: var(--muted);
-			font-weight: 600;
-			font-variant-numeric: tabular-nums;
-			white-space: nowrap;
-		}
-
-		.panel-content {
-			display: grid;
-			grid-template-columns: 210px minmax(0, 1fr);
-			gap: 18px;
-			align-items: start;
-		}
-
-		.donut-wrap {
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			min-height: 210px;
-		}
-
-		.donut {
-			width: 190px;
-			height: 190px;
-			border-radius: 50%;
-			position: relative;
-			background: conic-gradient(var(--accent) 0deg, #dbe3e8 0deg 360deg);
-			box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.1);
-		}
-
-		.donut::after {
-			content: "";
-			position: absolute;
-			inset: 26px;
-			border-radius: 50%;
-			background: var(--surface-strong);
-			box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
-		}
-
-		.donut-center {
-			position: absolute;
-			inset: 0;
-			display: grid;
-			place-items: center;
-			text-align: center;
-			z-index: 1;
-			padding: 0 30px;
-		}
-
-		.donut-value {
-			font-size: 1.2rem;
-			font-weight: 700;
-			line-height: 1.1;
-		}
-
-		.donut-label {
-			margin-top: 5px;
-			font-size: 0.74rem;
-			color: var(--muted);
-			text-transform: uppercase;
-			letter-spacing: 0.08em;
-		}
-
-		.legend {
-			display: flex;
-			flex-direction: column;
-			gap: 8px;
-			margin-top: 10px;
-		}
-
-		.legend-item {
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			gap: 12px;
-			border: 1px solid rgba(15, 23, 42, 0.08);
-			border-radius: 12px;
-			padding: 10px 12px;
-			background: rgba(255, 255, 255, 0.56);
-		}
-
-		.legend-item-app {
-			flex-direction: column;
-			align-items: stretch;
-			gap: 8px;
-		}
-
-		.legend-head {
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			gap: 10px;
-		}
-
-		.legend-head-clickable {
-			cursor: pointer;
-			padding: 2px 0;
-			border-radius: 8px;
-		}
-
-		.legend-head-clickable:hover {
-			background: rgba(15, 23, 42, 0.05);
-		}
-
-		.legend-left {
-			display: flex;
-			align-items: center;
-			gap: 10px;
-			min-width: 0;
-		}
-
-		.swatch {
-			width: 11px;
-			height: 11px;
-			border-radius: 50%;
-			flex: 0 0 auto;
-		}
-
-		.legend-name {
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-			font-size: 0.92rem;
-		}
-
-		.legend-val {
-			font-weight: 600;
-			font-size: 0.88rem;
-			color: #1e293b;
-		}
-
-		.legend-children {
-			display: flex;
-			flex-direction: column;
-			gap: 6px;
-			padding-left: 22px;
-		}
-
-		.legend-child-row {
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			gap: 10px;
-			font-size: 0.8rem;
-			color: var(--muted);
-		}
-
-		.legend-child-name {
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-		}
-
-		.legend-child-val {
-			font-variant-numeric: tabular-nums;
-			font-weight: 600;
-		}
-
-		.empty {
-			color: var(--muted);
-			border: 1px dashed rgba(71, 85, 105, 0.28);
-			border-radius: 12px;
-			padding: 16px;
-			text-align: center;
-			margin-top: 10px;
-			background: rgba(255, 255, 255, 0.46);
-		}
-
-		.status {
-			margin-top: 12px;
-			color: #9a3412;
-			font-size: 0.88rem;
-			display: none;
-		}
-
-		.status.show {
-			display: block;
-		}
-
-		@keyframes rise {
-			from {
-				opacity: 0;
-				transform: translateY(8px);
-			}
-			to {
-				opacity: 1;
-				transform: translateY(0);
-			}
-		}
-
-		@media (max-width: 1100px) {
-			.metrics-grid {
-				grid-template-columns: repeat(6, minmax(0, 1fr));
-			}
-
-			.metric {
-				grid-column: span 3;
-			}
-
-			.metric--primary {
-				grid-column: span 6;
-			}
-
-			.layout {
-				grid-template-columns: 1fr;
-			}
-		}
-
-		@media (max-width: 700px) {
-			body {
-				padding: 14px;
-			}
-
-			.header {
-				flex-direction: column;
-			}
-
-			.header-tools {
-				width: 100%;
-				align-items: flex-start;
-			}
-
-			.metrics-grid {
-				grid-template-columns: repeat(2, minmax(0, 1fr));
-			}
-
-			.metric,
-			.metric--primary {
-				grid-column: span 2;
-			}
-
-			.panel-content {
-				grid-template-columns: 1fr;
-			}
-
-			.bar-chart {
-				height: 240px;
-				grid-template-columns: repeat(auto-fit, minmax(34px, 1fr));
-				gap: 8px;
-			}
-
-			.bar-col-track {
-				height: 140px;
-			}
-
-			.donut-wrap {
-				min-height: 180px;
-			}
-		}
-	</style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>App Usage Tracker — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0a0d14;
+  --surface:#111827;
+  --surface2:#1a2233;
+  --surface3:#1e293b;
+  --border:rgba(255,255,255,0.07);
+  --border2:rgba(255,255,255,0.12);
+  --text:#f1f5f9;
+  --muted:#64748b;
+  --muted2:#94a3b8;
+  --accent:#6366f1;
+  --accent2:#8b5cf6;
+  --green:#10b981;
+  --amber:#f59e0b;
+  --red:#ef4444;
+  --cyan:#06b6d4;
+  --pink:#ec4899;
+  --glow:0 0 40px rgba(99,102,241,0.15);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100vh;
+  font-family:'Inter',sans-serif;
+  color:var(--text);
+  background:var(--bg);
+  background-image:
+    radial-gradient(ellipse at 20% 0%,rgba(99,102,241,0.12) 0%,transparent 50%),
+    radial-gradient(ellipse at 80% 0%,rgba(139,92,246,0.08) 0%,transparent 50%);
+  padding:20px;
+  font-size:14px;
+}
+.shell{max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+
+/* NAV */
+nav{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  padding:14px 20px;
+}
+.nav-brand{display:flex;align-items:center;gap:10px}
+.nav-dot{
+  width:10px;height:10px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 8px var(--green);animation:pulse 2s infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.nav-title{font-size:1rem;font-weight:700;letter-spacing:-0.01em}
+.nav-sub{font-size:0.75rem;color:var(--muted);margin-top:1px}
+.nav-right{display:flex;align-items:center;gap:10px}
+#nowBadge{
+  display:none;align-items:center;gap:7px;
+  background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);
+  border-radius:999px;padding:5px 12px;font-size:0.75rem;color:var(--green);font-weight:600;
+}
+#nowBadge.show{display:flex}
+.now-blink{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 1s infinite}
+#lastUpdate{font-size:0.75rem;color:var(--muted)}
+.btn{
+  background:var(--surface3);border:1px solid var(--border2);color:var(--text);
+  border-radius:10px;padding:7px 14px;font-size:0.8rem;font-weight:500;cursor:pointer;
+  transition:all 150ms ease;font-family:inherit;
+}
+.btn:hover{background:var(--surface2);border-color:rgba(255,255,255,0.2)}
+.btn-accent{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff}
+.btn-accent:hover{opacity:0.9;transform:translateY(-1px)}
+.btn-danger{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red)}
+.btn-danger:hover{background:rgba(239,68,68,0.2)}
+
+/* TABS */
+.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px}
+.tab{
+  padding:6px 14px;border-radius:8px;font-size:0.78rem;font-weight:500;cursor:pointer;
+  color:var(--muted);border:none;background:none;font-family:inherit;transition:all 150ms;
+}
+.tab.active{background:var(--surface3);color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,0.3)}
+
+/* METRICS ROW */
+.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.metric{
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:16px;position:relative;overflow:hidden;transition:border-color 200ms;
+}
+.metric:hover{border-color:var(--border2)}
+.metric::before{
+  content:'';position:absolute;inset:0 0 auto 0;height:2px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px 2px 0 0;
+}
+.metric.green::before{background:linear-gradient(90deg,var(--green),var(--cyan))}
+.metric.amber::before{background:linear-gradient(90deg,var(--amber),var(--red))}
+.metric.pink::before{background:linear-gradient(90deg,var(--pink),var(--red))}
+.metric.cyan::before{background:linear-gradient(90deg,var(--cyan),var(--accent))}
+.metric-icon{font-size:1.4rem;margin-bottom:8px}
+.metric-label{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:4px}
+.metric-value{font-size:1.5rem;font-weight:800;line-height:1;letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
+.metric-sub{font-size:0.72rem;color:var(--muted2);margin-top:5px}
+
+/* MAIN GRID */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:14px}
+.col-full{grid-column:1/-1}
+
+/* CARD */
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;
+}
+.card-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 18px 12px;border-bottom:1px solid var(--border);
+}
+.card-title{font-size:0.9rem;font-weight:600;display:flex;align-items:center;gap:8px}
+.card-title-icon{
+  width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:0.85rem;
+  background:rgba(99,102,241,0.15);
+}
+.card-body{padding:16px 18px}
+.card-controls{display:flex;align-items:center;gap:8px}
+
+/* APP LIST */
+.app-list{display:flex;flex-direction:column;gap:8px}
+.app-row{
+  display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;
+  transition:background 150ms;cursor:default;
+}
+.app-row:hover{background:var(--surface2)}
+.app-rank{font-size:0.7rem;font-weight:700;color:var(--muted);width:18px;text-align:center;flex-shrink:0}
+.app-name{flex:1;min-width:0;font-size:0.85rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app-bar-wrap{flex:1;height:4px;background:var(--surface3);border-radius:4px;overflow:hidden}
+.app-bar-fill{height:100%;border-radius:4px;transition:width 400ms ease}
+.app-time{font-size:0.75rem;font-weight:600;color:var(--muted2);white-space:nowrap;min-width:60px;text-align:right;font-variant-numeric:tabular-nums}
+.app-pct{font-size:0.7rem;color:var(--muted);min-width:32px;text-align:right}
+
+/* DONUT SVG */
+.donut-wrap{position:relative;display:flex;align-items:center;justify-content:center}
+.donut-center-text{
+  position:absolute;text-align:center;pointer-events:none;
+}
+.donut-center-val{font-size:1.05rem;font-weight:800;line-height:1}
+.donut-center-lbl{font-size:0.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-top:3px}
+
+/* LEGEND */
+.legend{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.legend-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;transition:background 150ms}
+.legend-row:hover{background:var(--surface2)}
+.legend-swatch{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.legend-name{flex:1;min-width:0;font-size:0.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.legend-val{font-size:0.75rem;font-weight:600;color:var(--muted2);font-variant-numeric:tabular-nums}
+
+/* HEATMAP */
+.heatmap{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;padding:4px}
+.heat-col{display:flex;flex-direction:column;align-items:center;gap:3px}
+.heat-cell{
+  width:100%;aspect-ratio:1;border-radius:4px;background:var(--surface3);
+  transition:all 200ms;cursor:default;
+}
+.heat-cell:hover{transform:scale(1.3);z-index:10;position:relative}
+.heat-label{font-size:0.55rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* BAR CHART (trend) */
+.trend-wrap{display:flex;align-items:flex-end;gap:6px;height:140px;padding:0 4px}
+.trend-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
+.trend-bar-track{flex:1;width:100%;border-radius:6px;overflow:hidden;background:var(--surface3);display:flex;align-items:flex-end;position:relative}
+.trend-bar-fill{width:100%;border-radius:6px;min-height:3px;transition:height 400ms ease}
+.trend-col-date{font-size:0.62rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.trend-col-val{font-size:0.6rem;color:var(--muted2);font-variant-numeric:tabular-nums}
+.trend-col.active .trend-bar-fill{filter:brightness(1.4)}
+.trend-col.active .trend-col-date{color:var(--accent)}
+
+/* DATE NAV */
+.date-nav{display:flex;align-items:center;gap:8px}
+.date-nav-btn{
+  background:var(--surface3);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;width:28px;height:28px;display:grid;place-items:center;
+  cursor:pointer;font-size:0.8rem;transition:all 150ms;
+}
+.date-nav-btn:disabled{opacity:0.3;cursor:not-allowed}
+.date-nav-btn:not(:disabled):hover{background:var(--surface2)}
+.date-chip{
+  background:var(--surface3);border:1px solid var(--border);border-radius:8px;
+  padding:5px 12px;font-size:0.8rem;font-weight:600;min-width:160px;text-align:center;
+}
+
+/* FOCUS SCORE */
+.score-ring-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+.score-value{font-size:2.5rem;font-weight:800;letter-spacing:-0.03em}
+.score-label{font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em}
+.score-breakdown{display:flex;flex-direction:column;gap:6px;width:100%}
+.score-item{display:flex;justify-content:space-between;align-items:center;font-size:0.78rem}
+.score-item-label{color:var(--muted2)}
+.score-item-val{font-weight:600;font-variant-numeric:tabular-nums}
+
+/* STREAK */
+.streak-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.streak-cell{
+  aspect-ratio:1;border-radius:5px;background:var(--surface3);
+  display:grid;place-items:center;font-size:0.55rem;color:var(--muted);
+  transition:all 200ms;
+}
+.streak-cell.has-data{color:var(--text)}
+.streak-cell.today{outline:2px solid var(--accent);outline-offset:1px}
+
+/* STATUS */
+#status{
+  display:none;margin-top:8px;padding:12px 16px;border-radius:10px;font-size:0.8rem;
+  background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);
+}
+#status.show{display:block}
+
+/* EMPTY */
+.empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;padding:40px 20px;color:var(--muted);font-size:0.85rem;text-align:center;
+}
+.empty-icon{font-size:2rem;opacity:0.4}
+
+/* SECTION PAGES */
+.page{display:none}
+.page.active{display:contents}
+
+/* ANIMATIONS */
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.animate{animation:fadeUp 300ms ease forwards}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:10px}
+
+/* RESPONSIVE */
+@media(max-width:1100px){
+  .metrics{grid-template-columns:repeat(3,1fr)}
+  .grid3{grid-template-columns:1fr 1fr}
+}
+@media(max-width:768px){
+  body{padding:12px}
+  .metrics{grid-template-columns:repeat(2,1fr)}
+  .grid2,.grid3{grid-template-columns:1fr}
+}
+</style>
 </head>
 <body>
-	<main class="app-shell">
-		<header class="header">
-			<div>
-				<h1 class="headline">Usage Intelligence Dashboard</h1>
-				<p class="subline">Live activity from your desktop apps and browser domains.</p>
-			</div>
-			<div class="header-tools">
-				<button id="refreshBtn" class="btn" type="button">Refresh Now</button>
-				<div id="lastUpdate" class="last-update">Waiting for first sync...</div>
-			</div>
-		</header>
+<div class="shell">
 
-		<section class="metrics-grid" aria-label="Key metrics">
-			<article class="card metric metric--primary">
-				<div class="metric-title">Tracked Today</div>
-				<div id="metricTotal" class="metric-value">0s</div>
-				<div class="metric-caption">Total live time across all apps</div>
-			</article>
-			<article class="card metric">
-				<div class="metric-title">Top App</div>
-				<div id="metricTopApp" class="metric-value">-</div>
-				<div id="metricTopAppTime" class="metric-caption">0s</div>
-			</article>
-			<article class="card metric">
-				<div class="metric-title">Web Time Share</div>
-				<div id="metricWebShare" class="metric-value">0%</div>
-				<div class="metric-caption">Portion of tracked time on domains</div>
-			</article>
-			<article class="card metric">
-				<div class="metric-title">Tracked Entities</div>
-				<div id="metricEntities" class="metric-value">0</div>
-				<div class="metric-caption">Apps + domains with activity</div>
-			</article>
-		</section>
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">
+    <div class="nav-dot"></div>
+    <div>
+      <div class="nav-title">⏱ App Usage Tracker</div>
+      <div class="nav-sub">Desktop activity intelligence</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div class="tabs">
+      <button class="tab active" data-tab="today" id="tabToday">Today</button>
+      <button class="tab" data-tab="history" id="tabHistory">History</button>
+      <button class="tab" data-tab="sites" id="tabSites">Sites</button>
+      <button class="tab" data-tab="insights" id="tabInsights">Insights</button>
+    </div>
+  </div>
+  <div class="nav-right">
+    <div id="nowBadge"><div class="now-blink"></div><span id="nowApp">—</span></div>
+    <div id="lastUpdate" class="last-update">Loading…</div>
+    <button class="btn btn-accent" id="refreshBtn">↻ Refresh</button>
+    <button class="btn btn-danger" id="resetBtn">Reset Today</button>
+  </div>
+</nav>
 
-		<section class="layout">
-			<article class="card panel" aria-labelledby="todayTitle">
-				<h2 id="todayTitle" class="panel-title">Selected Day Detail</h2>
-				<p class="panel-subtitle" id="selectedSubtitle">Navigate day by day to inspect app distribution.</p>
-				<div class="panel-controls">
-					<button id="prevDateBtn" class="date-nav-btn" type="button" aria-label="Previous date">&lt;</button>
-					<div id="selectedDateLabel" class="date-chip">--/--/----</div>
-					<button id="nextDateBtn" class="date-nav-btn" type="button" aria-label="Next date">&gt;</button>
-				</div>
-				<div class="panel-content">
-					<div class="donut-wrap" id="selectedDonutWrap"></div>
-					<div>
-						<div id="selectedLegend" class="legend"></div>
-						<div id="selectedEmpty" class="empty" hidden>No app usage has been tracked for this date.</div>
-					</div>
-				</div>
-			</article>
+<!-- METRICS ROW -->
+<div class="metrics" id="metricsRow">
+  <div class="metric green">
+    <div class="metric-icon">🕐</div>
+    <div class="metric-label">Tracked Today</div>
+    <div class="metric-value" id="mTotal">0s</div>
+    <div class="metric-sub" id="mTotalSub">No activity yet</div>
+  </div>
+  <div class="metric">
+    <div class="metric-icon">🏆</div>
+    <div class="metric-label">Top App</div>
+    <div class="metric-value" id="mTopApp" style="font-size:1rem;margin-top:4px">—</div>
+    <div class="metric-sub" id="mTopAppTime">—</div>
+  </div>
+  <div class="metric amber">
+    <div class="metric-icon">🌐</div>
+    <div class="metric-label">Web Time</div>
+    <div class="metric-value" id="mWebShare">0%</div>
+    <div class="metric-sub" id="mWebTime">of total time</div>
+  </div>
+  <div class="metric cyan">
+    <div class="metric-icon">📊</div>
+    <div class="metric-label">Apps Active</div>
+    <div class="metric-value" id="mApps">0</div>
+    <div class="metric-sub" id="mSites">0 sites visited</div>
+  </div>
+  <div class="metric pink">
+    <div class="metric-icon">🔥</div>
+    <div class="metric-label">Day Streak</div>
+    <div class="metric-value" id="mStreak">0</div>
+    <div class="metric-sub">consecutive days</div>
+  </div>
+</div>
 
-			<article class="card panel" aria-labelledby="historyTitle">
-				<h2 id="historyTitle" class="panel-title">Daily Trend</h2>
-				<p class="panel-subtitle" id="trendSubtitle">Rectangular day-based bars across your recent tracked dates.</p>
-				<div class="panel-content" style="grid-template-columns: 1fr;">
-					<div id="dayBars" class="bar-chart"></div>
-					<div id="trendEmpty" class="empty" hidden>Not enough daily data yet to draw a trend.</div>
-				</div>
-			</article>
-		</section>
+<!-- TODAY PAGE -->
+<div class="page active" id="pageToday">
 
-		<p id="status" class="status" role="status"></p>
-	</main>
+  <div class="grid3">
 
-	<script src="/dashboard/app.js"></script>
+    <!-- App usage list -->
+    <div class="card animate">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon">📱</div>App Breakdown</div>
+        <div id="dayNavControls" class="date-nav">
+          <button class="date-nav-btn" id="prevDateBtn" disabled>‹</button>
+          <div class="date-chip" id="selectedDateLabel">—</div>
+          <button class="date-nav-btn" id="nextDateBtn" disabled>›</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="appList" class="app-list"></div>
+        <div id="appListEmpty" class="empty" hidden><div class="empty-icon">📭</div>No activity for this day</div>
+      </div>
+    </div>
+
+    <!-- Donut chart -->
+    <div class="card animate" style="animation-delay:60ms">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon" style="background:rgba(139,92,246,0.15)">🥧</div>Distribution</div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;align-items:center;gap:12px">
+        <div class="donut-wrap" id="donutWrap">
+          <svg id="donutSvg" width="170" height="170" viewBox="0 0 170 170"></svg>
+          <div class="donut-center-text" id="donutCenter">
+            <div class="donut-center-val" id="donutVal">0s</div>
+            <div class="donut-center-lbl">total</div>
+          </div>
+        </div>
+        <div id="donutLegend" class="legend" style="width:100%"></div>
+      </div>
+    </div>
+
+    <!-- Hourly heatmap -->
+    <div class="card animate" style="animation-delay:120ms">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon" style="background:rgba(6,182,212,0.15)">🌡</div>Hourly Activity</div>
+      </div>
+      <div class="card-body">
+        <div class="heatmap" id="heatmap"></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;padding:0 4px">
+          <span style="font-size:0.62rem;color:var(--muted)">12AM</span>
+          <span style="font-size:0.62rem;color:var(--muted)">6AM</span>
+          <span style="font-size:0.62rem;color:var(--muted)">12PM</span>
+          <span style="font-size:0.62rem;color:var(--muted)">6PM</span>
+          <span style="font-size:0.62rem;color:var(--muted)">11PM</span>
+        </div>
+        <div id="heatmapLegend" style="display:flex;align-items:center;justify-content:flex-end;gap:4px;margin-top:6px">
+          <span style="font-size:0.62rem;color:var(--muted)">Less</span>
+          <div style="display:flex;gap:2px" id="heatScale"></div>
+          <span style="font-size:0.62rem;color:var(--muted)">More</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Trend bars -->
+  <div class="card animate" style="animation-delay:180ms">
+    <div class="card-header">
+      <div class="card-title"><div class="card-title-icon" style="background:rgba(245,158,11,0.15)">📈</div>Daily Trend (last 14 days)</div>
+      <div id="trendSubtitle" style="font-size:0.75rem;color:var(--muted)"></div>
+    </div>
+    <div class="card-body">
+      <div class="trend-wrap" id="trendBars"></div>
+      <div id="trendEmpty" class="empty" hidden><div class="empty-icon">📊</div>Not enough data yet</div>
+    </div>
+  </div>
+
+</div><!-- /pageToday -->
+
+<!-- HISTORY PAGE -->
+<div class="page" id="pageHistory">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><div class="card-title-icon">📅</div>All Tracked Days</div>
+    </div>
+    <div class="card-body">
+      <div id="historyGrid" class="streak-grid"></div>
+      <div id="historyList" style="margin-top:20px;display:flex;flex-direction:column;gap:10px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SITES PAGE -->
+<div class="page" id="pageSites">
+  <div class="grid2">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon">🌐</div>Top Websites Today</div>
+      </div>
+      <div class="card-body">
+        <div id="siteList" class="app-list"></div>
+        <div id="siteEmpty" class="empty" hidden><div class="empty-icon">🌍</div>No web activity yet</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon" style="background:rgba(236,72,153,0.15)">🥧</div>Web Distribution</div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;align-items:center;gap:12px">
+        <div class="donut-wrap" id="siteDonutWrap">
+          <svg id="siteDonutSvg" width="150" height="150" viewBox="0 0 150 150"></svg>
+          <div class="donut-center-text" id="siteDonutCenter">
+            <div class="donut-center-val" id="siteDonutVal">0s</div>
+            <div class="donut-center-lbl">web total</div>
+          </div>
+        </div>
+        <div id="siteLegend" class="legend" style="width:100%"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- INSIGHTS PAGE -->
+<div class="page" id="pageInsights">
+  <div class="grid3">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon">🧠</div>Focus Score</div>
+      </div>
+      <div class="card-body">
+        <div class="score-ring-wrap">
+          <div id="focusScoreVal" class="score-value" style="color:var(--green)">—</div>
+          <div class="score-label">Focus Score / 100</div>
+          <div style="width:100%;background:var(--surface3);border-radius:8px;height:6px;margin:8px 0;overflow:hidden">
+            <div id="focusScoreBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--green),var(--cyan));border-radius:8px;transition:width 600ms ease"></div>
+          </div>
+        </div>
+        <div class="score-breakdown" id="focusBreakdown" style="margin-top:12px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon" style="background:rgba(245,158,11,0.15)">⏱</div>Session Stats</div>
+      </div>
+      <div class="card-body">
+        <div id="sessionStats" class="score-breakdown"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><div class="card-title-icon" style="background:rgba(236,72,153,0.15)">📆</div>Activity Streak</div>
+      </div>
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:0.75rem;color:var(--muted)">Sun</span><span style="font-size:0.75rem;color:var(--muted)">Mon</span>
+          <span style="font-size:0.75rem;color:var(--muted)">Tue</span><span style="font-size:0.75rem;color:var(--muted)">Wed</span>
+          <span style="font-size:0.75rem;color:var(--muted)">Thu</span><span style="font-size:0.75rem;color:var(--muted)">Fri</span>
+          <span style="font-size:0.75rem;color:var(--muted)">Sat</span>
+        </div>
+        <div id="streakGrid" class="streak-grid"></div>
+        <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px" id="streakStats"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p id="status"></p>
+</div>
+
+<script src="/dashboard/app.js"></script>
 </body>
 </html>

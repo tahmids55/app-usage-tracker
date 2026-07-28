@@ -100,6 +100,8 @@ class AppUsageTracker {
         this._appIconCache = new Map();
 
         this._focusSignalId = 0;
+        this._monitorSignalId = 0;
+        this._displayOn = true;  // Tracks whether the physical display is on
         this._uiTickId = 0;
         this._syncId = 0;
         this._localAddedSeconds = 0;
@@ -167,6 +169,20 @@ class AppUsageTracker {
             this._handleFocusChange();
         });
 
+        // Detect display on/off via Meta.MonitorManager power-save-mode changes.
+        // Mode 0 (NO_PREFERENCE) means the display is on; any other value means
+        // the display has been blanked/turned off by DPMS without a full suspend.
+        try {
+            const monitorManager = Meta.MonitorManager.get();
+            if (monitorManager) {
+                this._monitorSignalId = monitorManager.connect('power-save-mode-changed', () => {
+                    this._handlePowerSaveModeChange(monitorManager);
+                });
+            }
+        } catch (e) {
+            log('[AppUsageTracker] Could not connect to MonitorManager: ' + e);
+        }
+
         this._syncId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
             this._syncServerData();
             return GLib.SOURCE_CONTINUE;
@@ -194,6 +210,14 @@ class AppUsageTracker {
             global.display.disconnect(this._focusSignalId);
             this._focusSignalId = 0;
         }
+        if (this._monitorSignalId) {
+            try {
+                const monitorManager = Meta.MonitorManager.get();
+                if (monitorManager)
+                    monitorManager.disconnect(this._monitorSignalId);
+            } catch (e) {}
+            this._monitorSignalId = 0;
+        }
 
         if (this._soupSession)
             this._soupSession.abort();
@@ -201,6 +225,7 @@ class AppUsageTracker {
         this._lastApp = null;
         this._lastAppGicon = null;
         this._currentDomain = null;
+        this._displayOn = true;
         this._localAddedSeconds = 0;
         this._siteIconCache.clear();
         this._siteIconInFlight.clear();
@@ -275,8 +300,11 @@ class AppUsageTracker {
             const msg = Soup.Message.new('POST', this._stateUrl);
             if (!msg)
                 return;
+            // When the display is off, send an empty app so the server's tick
+            // loop stops counting. The server only counts when currentApp is
+            // non-empty, so this effectively pauses tracking until display returns.
             const payload = {
-                app: this._lastApp || ''
+                app: this._displayOn ? (this._lastApp || '') : ''
             };
             const bytes = new GLib.Bytes(new TextEncoder().encode(JSON.stringify(payload)));
             msg.set_request_body_from_bytes('application/json', bytes);
@@ -286,6 +314,31 @@ class AppUsageTracker {
                 } catch (e) {}
             });
         } catch (e) {}
+    }
+
+    _handlePowerSaveModeChange(monitorManager) {
+        // Meta.PowerSaveMode: 0 = NO_PREFERENCE (display on),
+        // 1 = STANDBY, 2 = SUSPEND, 3 = OFF
+        // Any non-zero value means the display has been blanked.
+        let isOn = true;
+        try {
+            const mode = monitorManager.get_power_save_mode();
+            isOn = (mode === 0);
+        } catch (e) {
+            // Fallback: if get_power_save_mode() isn't available, assume on
+            isOn = true;
+        }
+
+        if (this._displayOn === isOn)
+            return;
+
+        this._displayOn = isOn;
+        log(`[AppUsageTracker] Display ${isOn ? 'on' : 'off'} — tracking ${isOn ? 'resumed' : 'paused'}`);
+
+        // Immediately notify server of the new state so counting starts/stops
+        // right away rather than waiting for the next sync interval.
+        this._postState();
+        this._emitUpdate();
     }
 
     _localUiTick() {
