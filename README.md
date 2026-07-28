@@ -1,166 +1,239 @@
 # App Usage Tracker
 
-A local-first activity tracker that combines:
+This project is a local-first desktop and web activity tracker built from three pieces:
 
-- a GNOME Shell extension for desktop app focus time,
-- a browser extension for active website domain time,
-- a lightweight C++ HTTP server that aggregates and persists usage stats.
+1. A GNOME Shell extension for focused app tracking and top-bar UI.
+2. A browser extension for active website domain tracking.
+3. A lightweight C++ local server for aggregation, persistence, and dashboard APIs.
 
-The server listens on `127.0.0.1:7878` and stores totals in `~/.local/share/usage-tracker/stats.json`.
+If your goal is learning, this README explains both what the system does and how to build a similar system as a software engineer, step by step.
 
-## Project Structure
+## What This Extension Does
 
-- `extension.js`: GNOME Shell extension entry point and UI panel indicator.
-- `metadata.json`: GNOME extension metadata (UUID, supported Shell versions, etc.).
-- `stylesheet.css`: panel label styling for the GNOME indicator.
-- `browser-ext/manifest.json`: browser extension manifest (MV3).
-- `browser-ext/background.js`: tracks active tab domain and posts 1-second web usage increments.
-- `server/server.cpp`: local HTTP server that accepts tracking events and serves stats.
-- `server/usage-tracker-server`: compiled Linux server binary.
-- `server/server.log`: sample runtime output from a previous server run.
+At runtime, the stack tracks usage in one-second increments and keeps all data local to your machine.
 
-## How It Works
+Current behavior highlights:
 
-### 1) Desktop app tracking (GNOME)
+1. Server-side counting runs every second.
+2. Panel and dashboard refresh every second.
+3. Browser domains are isolated by browser family (for example, Chrome vs Brave).
+4. The top panel and dashboard are aligned to the same daily data source to avoid drift.
+5. Counting does not pause based on idle state in this version.
 
-The GNOME extension in `extension.js`:
+## Architecture
 
-- listens for focused window changes,
-- computes elapsed active time for the previously focused app,
-- posts app usage deltas to `POST /track` as:
+### Components
 
-```json
-{ "type": "app", "name": "App Name", "duration": 12 }
-```
+1. `extension.js`
+  - GNOME top-bar indicator and popup menu.
+  - Reads live stats from server endpoints.
+  - Detects focused app and posts active state.
 
-It also adds a top-bar indicator that shows:
+2. `browser-ext/background.js`
+  - Detects active tab domain in a Chromium-based browser.
+  - Posts active domain updates to the local server.
+  - Includes keep-alive alarm logic for MV3 service worker behavior.
 
-- current app and its elapsed usage,
-- total tracked active time,
-- top 5 apps by usage.
+3. `server/server.cpp`
+  - Owns the source of truth for time counting.
+  - Tracks active app + per-browser active domain.
+  - Serves API endpoints and dashboard static files.
+  - Persists data into local JSON files.
 
-### 2) Website tracking (browser)
+4. `dashboard/index.html` and `dashboard/app.js`
+  - Displays daily usage analytics, trend bars, and per-app/domain breakdowns.
 
-The browser extension in `browser-ext/background.js`:
+## Data Flow (End to End)
 
-- resolves active tab hostname (strips `www.`),
-- ignores non-http(s) URLs,
-- tracks when a browser window is focused,
-- posts accumulated domain session deltas (with periodic flush/checkpoint):
+1. GNOME extension observes focused app changes and sends app state to `POST /state`.
+2. Browser extension observes active tab changes and sends domain state to `POST /active-web`.
+3. Server tick loop runs every second and increments counters for the currently focused app.
+4. If focused app is a browser and a domain is active for that browser family, server increments that domain child counter too.
+5. GNOME panel requests daily stats and history every second for display.
+6. Dashboard requests daily stats every second for visualizations.
+7. Server autosaves to disk every minute and on shutdown.
 
-```json
-{ "type": "web", "name": "example.com", "duration": 1 }
-```
+## File and Data Model
 
-### 3) Aggregation and persistence (C++ server)
+High-level server model:
 
-The server in `server/server.cpp`:
+1. `apps[appName].total`
+  - Total seconds for app.
+2. `apps[appName].children[domain]`
+  - Per-domain seconds under that app (browser apps only).
+3. `dailyApps[YYYY-MM-DD][appName]`
+  - Daily scoped totals and children.
+4. `currentApp`
+  - Current focused app name.
+5. `currentWebDomainByBrowser[browserFamily]`
+  - Current active domain per browser family.
 
-- binds to `127.0.0.1:7878`,
-- accepts CORS-enabled requests,
-- updates in-memory counters for `app` and `web` without double-counting browser totals,
-- exposes `GET /stats` with combined totals,
-- autosaves every 60 seconds, at rollover checkpoint, and on shutdown.
+Persistence paths:
 
-Persistence location:
-
-- `~/.local/share/usage-tracker/stats.json`
+1. `~/.local/share/usage-tracker/stats.json`
+2. `~/.local/share/usage-tracker/daily-stats.json`
 
 ## HTTP API
 
-### `POST /track`
+### State/Tracking Endpoints
 
-Body:
+1. `POST /state`
+  - Used by GNOME extension to set active app.
 
-```json
-{ "type": "app|web", "name": "string", "duration": 1 }
-```
+2. `POST /active-web`
+  - Used by browser extension to set active domain for browser family.
 
-Behavior:
+3. `POST /track`
+  - Legacy-compatible state endpoint retained for compatibility.
 
-- `type = app` updates app totals.
-- `type = web` updates web totals.
-- Empty names or non-positive durations are ignored.
+4. `POST /reset-today`
+  - Clears current-day data.
 
-Response:
+### Read Endpoints
 
-```json
-{ "ok": true }
-```
+1. `GET /stats`
+  - Lifetime aggregate stats.
 
-### `GET /stats`
+2. `GET /daily?date=today`
+  - Daily aggregate stats for dashboard/panel alignment.
 
-Response shape:
+3. `GET /daily-dates`
+  - List of tracked dates.
 
-```json
-{
-  "app": {
-    "Firefox": 120,
-    "Code": 540
-  },
-  "web": {
-    "github.com": 200,
-    "stackoverflow.com": 80
-  }
-}
-```
+4. `GET /history`
+  - Current app/domain context + merged domain history rows.
 
-## Setup
+5. `GET /dashboard`
+  - Serves dashboard UI.
 
-### 1) Build and run the server
+## How to Run
 
-From `server/`:
+### 1) Build and Start Server
 
-```bash
-g++ -std=c++17 -pthread -O2 -o usage-tracker-server server.cpp
-./usage-tracker-server
-```
+Run from `server/`:
 
-Optional background run:
+1. `g++ -std=c++17 -pthread -O2 -o usage-tracker-server server.cpp`
+2. `./usage-tracker-server`
 
-```bash
-nohup ./usage-tracker-server > server.log 2>&1 &
-```
+Optional background mode:
 
-Check stats endpoint:
+1. `nohup ./usage-tracker-server > server.log 2>&1 &`
 
-```bash
-curl http://127.0.0.1:7878/stats
-```
+Quick check:
 
-### 2) Install/enable GNOME extension
+1. `curl http://127.0.0.1:7878/stats`
 
-This folder is already structured like a local GNOME extension directory using UUID:
+### 2) Load GNOME Extension
 
-- `app-usage-tracker@local`
+This folder is already in a local extension layout with UUID `app-usage-tracker@local`.
 
-Supported Shell versions in metadata:
+Enable using GNOME Extensions app or CLI tools.
 
-- 45, 46, 47, 48
+### 3) Load Browser Extension
 
-Enable it using your normal GNOME extension workflow (Extensions app or CLI tooling).
+For Chrome/Brave/Chromium:
 
-### 3) Load browser extension (Chromium-based)
+1. Open browser extensions page.
+2. Enable Developer Mode.
+3. Load unpacked from `browser-ext/`.
 
-1. Open extensions page.
-2. Enable Developer mode.
-3. Load unpacked extension from:
-   - `browser-ext/`
+## Learning Path: Build This as an Engineer
 
-The extension requires:
+Use this as a practical blueprint for building systems that combine desktop, browser, backend, and UI.
 
-- `tabs`, `activeTab`, `alarms` permissions,
-- host access to `http://127.0.0.1:7878/*`.
+### Phase 1: Define the Contract First
 
-## Runtime Notes
+1. Define your domain entities: app, domain child, total seconds, daily total.
+2. Define API endpoints before coding UI.
+3. Decide one source of truth for counting (server tick loop).
+4. Write down edge cases:
+  - Browser service-worker sleep.
+  - Focus changes between app and browser.
+  - App name variations across environments.
 
-- Tracking is local-only by default (`127.0.0.1`).
-- The checked-in `server/usage-tracker-server` is an x86-64 Linux ELF binary.
-- `server/server.log` currently shows one clean start and stop cycle.
+### Phase 2: Build the Local Server
 
-## Troubleshooting
+1. Implement a tiny HTTP server and endpoint router.
+2. Implement shared in-memory store guarded by mutex.
+3. Implement one-second tick loop for deterministic counting.
+4. Add daily partitioning and autosave.
+5. Add compatibility parsers for evolving JSON schema.
 
-- If no data appears, ensure the server is running before enabling the GNOME/browser extensions.
-- If browser stats are missing, verify the browser extension is loaded and has host permission for `127.0.0.1:7878`.
-- If app stats are missing, verify the GNOME extension is enabled and Shell version is supported.
-- If `bind() failed on port 7878`, another process is already using that port.
+Engineering lessons:
+
+1. Keep counting in one place to prevent double counting.
+2. Separate state updates from duration updates.
+3. Ensure every endpoint is tolerant to partial/legacy payloads.
+
+### Phase 3: Build Browser Active-Domain Signal
+
+1. Detect active tab domain from URL.
+2. Ignore unsupported protocols.
+3. Post active domain changes to server.
+4. Add periodic keepalive alarm for MV3 worker wakeups.
+5. Handle Brave vs Chrome identity robustly.
+
+Engineering lessons:
+
+1. Browser runtime lifecycle can drop volatile state.
+2. Explicit re-posting is safer than assuming always-on workers.
+
+### Phase 4: Build GNOME Focus Signal + Panel UI
+
+1. Detect focused window and resolve app name.
+2. Post app state to server.
+3. Pull data on a fixed cadence for display.
+4. Render top app rows and nested domain rows.
+5. Add icon fallback chain (themed icons, copied static icons, file icons).
+
+Engineering lessons:
+
+1. UI should read the same data contract as analytics views.
+2. Keep UI reactive but avoid inventing unsynchronized local totals.
+
+### Phase 5: Build Dashboard Analytics
+
+1. Normalize API payloads into deterministic view model.
+2. Render totals, donut, legends, trend bars.
+3. Support day navigation via `GET /daily?date=` and `GET /daily-dates`.
+4. Keep refresh interval aligned with panel if consistency is required.
+
+Engineering lessons:
+
+1. Visualizations are only as good as normalization logic.
+2. Date handling must be explicit and local-time aware.
+
+### Phase 6: Hardening and Correctness
+
+1. Separate domains by browser family to avoid cross-browser mixing.
+2. Keep compatibility paths for old payload formats.
+3. Make refresh cadence explicit and centralized.
+4. Add logging around state transitions and endpoint failures.
+5. Validate with realistic manual scenarios:
+  - Alternate Chrome and Brave with different sites.
+  - Switch rapidly between browser and non-browser apps.
+  - Restart server while extensions are running.
+
+## Practical Debug Checklist
+
+If numbers look wrong, check in this order:
+
+1. Server is running and reachable on `127.0.0.1:7878`.
+2. Browser extension is loaded and has host permission.
+3. GNOME extension is enabled and posting state.
+4. `GET /history` reflects expected `currentApp` and `currentDomain`.
+5. `GET /daily?date=today` contains expected app/domain rows.
+6. Panel and dashboard both refreshing at 1-second cadence.
+
+## Suggested Next Learning Improvements
+
+1. Add unit tests for JSON normalization and parser fallback behavior.
+2. Add a replayable integration test script that posts synthetic state transitions.
+3. Add trace endpoint for recent state transitions to ease debugging.
+4. Add explicit schema version in persisted files.
+5. Add optional export to CSV for analytics.
+
+## License and Safety Notes
+
+1. This project is local-first and binds to loopback address only.
+2. Review data retention files before sharing logs or persisted JSON.

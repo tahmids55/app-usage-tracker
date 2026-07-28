@@ -1,6 +1,8 @@
 # User-requested ignores
 icon/sites/
 READ.md
+README.md
+readme.md
 
 # Secrets and credentials
 .env
